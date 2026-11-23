@@ -9,4 +9,6 @@ dist
 !.env.example
 client/dist
 worker/dist
+*.tsbuildinfo
 .mf
+playwright-core
