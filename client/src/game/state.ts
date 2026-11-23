@@ -70,7 +70,11 @@ export class GameState {
     }
   }
 
-  unlockPet(speciesId: string, label?: string): PetInstance | null {
+  unlockPet(
+    speciesId: string,
+    label?: string,
+    opts?: { color?: number; colorName?: string; silent?: boolean }
+  ): PetInstance | null {
     const sp = PET_SPECIES[speciesId];
     if (!sp) return null;
     if (this.save.pets.some((p) => p.speciesId === speciesId)) {
@@ -85,10 +89,12 @@ export class GameState {
       xp: 0,
       traits: [...sp.traits],
       active: this.save.pets.length === 0,
+      color: opts?.color,
+      colorName: opts?.colorName,
     };
     if (pet.active) this.save.pets.forEach((p) => (p.active = false));
     this.save.pets.push(pet);
-    this.log(`Pet unlocked: ${pet.name}!`);
+    if (!opts?.silent) this.log(`Pet unlocked: ${pet.name}!`);
     this.mark();
     return pet;
   }

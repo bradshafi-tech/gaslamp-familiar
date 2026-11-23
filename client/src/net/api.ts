@@ -62,3 +62,21 @@ export async function saveCharacter(save: CharacterSave) {
     body: JSON.stringify({ save }),
   });
 }
+
+export type ChatMessage = {
+  id: string;
+  username: string;
+  body: string;
+  created_at: number;
+};
+
+export async function fetchChat(after = 0) {
+  return api<{ messages: ChatMessage[] }>(`/api/chat?after=${after}&limit=50`);
+}
+
+export async function sendChat(body: string) {
+  return api<{ message: ChatMessage }>("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}

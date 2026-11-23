@@ -2,8 +2,9 @@ export type ItemDef = {
   id: string;
   name: string;
   stackable: boolean;
-  category: "tool" | "weapon" | "food" | "material" | "misc" | "catch";
+  category: "tool" | "weapon" | "food" | "material" | "misc" | "catch" | "egg";
   heal?: number;
+  hatchPet?: string;
   desc: string;
 };
 
@@ -22,6 +23,14 @@ export const ITEMS: Record<string, ItemDef> = {
   lamp_wick: { id: "lamp_wick", name: "Enchanted Wick", stackable: true, category: "misc", desc: "Quest item for the lampwright." },
   iron_scrap: { id: "iron_scrap", name: "Iron Scrap", stackable: true, category: "material", desc: "Outskirts salvage." },
   crafted_lure: { id: "crafted_lure", name: "Crafted Lure", stackable: true, category: "misc", desc: "Helps train a Catcher." },
+  amethyst_egg: {
+    id: "amethyst_egg",
+    name: "Amethyst Dragon Egg",
+    stackable: true,
+    category: "egg",
+    hatchPet: "dwarf_dragon",
+    desc: "Dropped on the ground by the Amethyst Drake. Click the egg to receive a Dwarf Dragon.",
+  },
 };
 
 export function itemName(id: string): string {

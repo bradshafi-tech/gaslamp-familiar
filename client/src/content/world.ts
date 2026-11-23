@@ -1,6 +1,6 @@
 export type WorldNode = {
   id: string;
-  kind: "tree" | "rock" | "fish" | "forge" | "bench" | "npc" | "enemy" | "wild_pet" | "zone";
+  kind: "tree" | "rock" | "fish" | "forge" | "bench" | "npc" | "enemy" | "wild_pet" | "zone" | "ground_egg";
   label: string;
   x: number;
   z: number;
@@ -28,6 +28,28 @@ export const WORLD_NODES: WorldNode[] = [
   { id: "wild_hare", kind: "wild_pet", label: "Mist Hare", x: -16, z: 20, meta: { species: "mist_hare" } },
   { id: "shade", kind: "enemy", label: "Mist Shade", x: -18, z: 22, meta: { hp: 18, xpAttack: 30, xpStr: 20, xpHp: 24, xpMagic: 15, boss: true } },
   { id: "zone_under", kind: "zone", label: "Understreet Gate", x: -20, z: 24, meta: { zone: "understreet", requiredPetLevel: 3, requiredPetTrait: "catcher" } },
+
+  // Beyond the gate — high-tier purple dragon boss (pet reward on defeat)
+  {
+    id: "boss_amethyst_drake",
+    kind: "enemy",
+    label: "Amethyst Drake",
+    x: -24,
+    z: 30,
+    meta: {
+      hp: 42,
+      xpAttack: 48,
+      xpStr: 32,
+      xpHp: 36,
+      xpMagic: 28,
+      boss: true,
+      bossId: "amethyst_drake",
+      model: "purple-dragon",
+      rewardEgg: "amethyst_egg",
+      requireZone: "understreet",
+      interactRadius: 2.6,
+    },
+  },
 ];
 
-export const TOWN_BOUNDS = { minX: -22, maxX: 14, minZ: -12, maxZ: 26 };
+export const TOWN_BOUNDS = { minX: -28, maxX: 14, minZ: -12, maxZ: 34 };

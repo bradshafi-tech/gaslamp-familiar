@@ -98,6 +98,16 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     color: 0x8ec5ff,
     desc: "Pet-gated delve reward / hard catch.",
   },
+  dwarf_dragon: {
+    id: "dwarf_dragon",
+    name: "Dwarf Dragon",
+    rarity: "rare",
+    traits: ["mythic", "combat", "dragon"],
+    unlock: "quest",
+    catchTier: 3,
+    color: 0x6b3fa0,
+    desc: "Shrunk dragon familiar from the Amethyst Drake egg. Eight cosmetic colour variants (random on hatch).",
+  },
 };
 
 export function randomPetInstanceId(): string {

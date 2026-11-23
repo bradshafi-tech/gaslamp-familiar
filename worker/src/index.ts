@@ -202,6 +202,44 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     return json({ ok: true });
   }
 
+  // Global chat (short-poll via D1 until shared MMO / Durable Objects)
+  if (path === "/api/chat" && request.method === "GET") {
+    const user = await getSessionUser(request, env);
+    if (!user) return bad("unauthorized", 401);
+    const after = Number(url.searchParams.get("after") || "0");
+    const limit = Math.min(80, Math.max(1, Number(url.searchParams.get("limit") || "40")));
+    const rows = await env.DB.prepare(
+      `SELECT id, username, body, created_at FROM chat_messages
+       WHERE created_at > ?
+       ORDER BY created_at ASC
+       LIMIT ?`
+    )
+      .bind(after, limit)
+      .all<{ id: string; username: string; body: string; created_at: number }>();
+    return json({ messages: rows.results ?? [] });
+  }
+
+  if (path === "/api/chat" && request.method === "POST") {
+    const user = await getSessionUser(request, env);
+    if (!user) return bad("unauthorized", 401);
+    const body = await readJson<{ body?: string }>(request);
+    const text = (body?.body || "").trim().slice(0, 240);
+    if (!text) return bad("message required");
+    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text)) return bad("invalid characters");
+    const id = randomId(12);
+    const createdAt = Date.now();
+    await env.DB.prepare(
+      "INSERT INTO chat_messages (id, user_id, username, body, created_at) VALUES (?, ?, ?, ?, ?)"
+    )
+      .bind(id, user.id, user.username, text, createdAt)
+      .run();
+    // Keep table lean (2-day window)
+    await env.DB.prepare("DELETE FROM chat_messages WHERE created_at < ?")
+      .bind(createdAt - 2 * 24 * 60 * 60 * 1000)
+      .run();
+    return json({ message: { id, username: user.username, body: text, created_at: createdAt } });
+  }
+
   return bad("not found", 404);
 }
 

@@ -45,6 +45,9 @@ export type PetInstance = {
   xp: number;
   traits: string[];
   active: boolean;
+  /** Cosmetic only (e.g. Dwarf Dragon colour variant hex). */
+  color?: number;
+  colorName?: string;
 };
 
 export type QuestProgress = {
@@ -95,6 +98,7 @@ export function defaultSave(): CharacterSave {
       { questId: "q1_lamp_familiar", status: "available", step: 0, flags: {} },
       { questId: "q2_catcher_path", status: "available", step: 0, flags: {} },
       { questId: "q3_outskirts_delve", status: "available", step: 0, flags: {} },
+      { questId: "q4_amethyst_drake", status: "available", step: 0, flags: {} },
     ],
     position: { x: 0, y: 0, z: 0 },
     equipment: { weapon: "bronze_sword", tool: "bronze_axe" },

@@ -48,4 +48,16 @@ export const QUESTS: Record<string, QuestDef> = {
     rewardGold: 50,
     unlockZone: "understreet",
   },
+  q4_amethyst_drake: {
+    id: "q4_amethyst_drake",
+    name: "Amethyst Drake",
+    summary: "Slay the purple Drake beyond Understreet and claim its egg.",
+    steps: [
+      "Unlock the Understreet Gate (Beneath the Cobbles).",
+      "Defeat the Amethyst Drake.",
+      "Click the egg on the ground at the kill spot to receive a Dwarf Dragon.",
+    ],
+    rewardPet: "dwarf_dragon",
+    rewardGold: 75,
+  },
 };

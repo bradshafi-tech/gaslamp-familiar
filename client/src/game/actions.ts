@@ -1,7 +1,7 @@
 import type { WorldNode } from "../content/world";
 import { ITEMS } from "../content/items";
 import { PET_SPECIES } from "../content/pets";
-import { QUESTS } from "../content/quests";
+import { randomDwarfDragonColor } from "../content/dragon-colors";
 import type { GameState } from "./state";
 import type { World3D } from "./world3d";
 
@@ -40,6 +40,9 @@ export function interact(node: WorldNode, state: GameState, world: World3D) {
       break;
     case "zone":
       enterZone(node, state);
+      break;
+    case "ground_egg":
+      clickGroundEgg(node, state, world);
       break;
   }
 }
@@ -189,6 +192,11 @@ function craft(state: GameState) {
 }
 
 function fight(node: WorldNode, state: GameState, world: World3D) {
+  const needZone = String(node.meta?.requireZone ?? "");
+  if (needZone && !state.save.unlockedZones.includes(needZone)) {
+    state.log(`The ${node.label} stirs beyond a sealed threshold (${needZone}).`);
+    return;
+  }
   const mesh = world.nodeMeshes.get(node.id);
   if (mesh && !mesh.visible) {
     state.log(`${node.label} already defeated. It will return soon.`);
@@ -234,7 +242,7 @@ function fight(node: WorldNode, state: GameState, world: World3D) {
       world.showEnemy(node.id, Number(node.meta?.hp ?? 5));
     }, 20000);
     const q3 = state.quest("q3_outskirts_delve");
-    if (node.meta?.boss && q3.status === "active") {
+    if (node.id === "shade" && node.meta?.boss && q3.status === "active") {
       state.advanceQuest("q3_outskirts_delve", 3, "shade");
       const pet = state.activePet();
       const catcherReady = !!pet && pet.traits.includes("catcher") && pet.level >= 3;
@@ -244,6 +252,18 @@ function fight(node: WorldNode, state: GameState, world: World3D) {
       } else {
         state.log("Shade down — finish Catcher lv3 + Cobble Crow if still missing.");
       }
+    }
+    // Amethyst Drake boss → egg appears on the ground at the kill spot
+    if (node.meta?.rewardEgg) {
+      const q4 = state.quest("q4_amethyst_drake");
+      if (q4.status === "available") {
+        q4.status = "active";
+        q4.step = 1;
+      }
+      if (q4.status === "active") state.advanceQuest("q4_amethyst_drake", 2, "drake_slain");
+      // Drop on the ground at the kill spot (slight offset so it isn't under the corpse hitbox)
+      world.spawnGroundEgg(node.x + 1.1, node.z + 0.4, String(node.meta.rewardEgg));
+      state.log("The Drake falls — an Amethyst Dragon Egg rests on the ground. Click it.");
     }
   }
   // Soft respawn after defeat already scheduled; keep combat snappy
@@ -302,7 +322,18 @@ function enterZone(node: WorldNode, state: GameState) {
     state.log(`Requires a ${needTrait} pet.`);
     return;
   }
-  state.log(`You pass the ${QUESTS.q3_outskirts_delve ? "Understreet" : zone} threshold. (More content later.)`);
+  if (zone === "understreet") {
+    const q4 = state.quest("q4_amethyst_drake");
+    if (q4.status === "available") {
+      q4.status = "active";
+      q4.step = 1;
+      state.mark();
+      state.log("Quest started: Amethyst Drake.");
+    }
+    state.log("You pass the Understreet threshold. An Amethyst Drake waits deeper in the dark.");
+    return;
+  }
+  state.log(`You pass the ${zone} threshold.`);
 }
 
 export function eatFood(state: GameState, itemId: string) {
@@ -314,4 +345,33 @@ export function eatFood(state: GameState, itemId: string) {
   if (!state.removeItem(itemId, 1)) return;
   state.heal(def.heal);
   state.log(`You eat ${def.name} (+${def.heal} hp).`);
+}
+
+function clickGroundEgg(node: WorldNode, state: GameState, world: World3D) {
+  if (state.save.pets.some((p) => p.speciesId === "dwarf_dragon")) {
+    state.log("You already have a Dwarf Dragon. The egg fades.");
+    world.removeDynamicNode(node.id);
+    return;
+  }
+  const variant = randomDwarfDragonColor();
+  const unlocked = state.unlockPet("dwarf_dragon", "Dwarf Dragon", {
+    color: variant.hex,
+    colorName: variant.name,
+    silent: true,
+  });
+  if (!unlocked) return;
+  state.setActivePet(unlocked.id);
+  world.setActivePetSpecies("dwarf_dragon", variant.hex);
+  world.removeDynamicNode(node.id);
+
+  const q4 = state.quest("q4_amethyst_drake");
+  q4.status = "completed";
+  q4.step = 3;
+  q4.flags.hatched = true;
+  state.save.gold += 75;
+  state.mark();
+
+  // Exact on-screen quest complete message
+  state.log("Quest complete — you receive Dwarf Dragon.");
+  state.log(`Colour: ${variant.name} (cosmetic only).`);
 }

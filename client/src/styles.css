@@ -233,6 +233,62 @@ input {
   color: var(--muted);
 }
 
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+  max-height: 220px;
+}
+
+.chat-log {
+  flex: 1;
+  overflow: auto;
+  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.22);
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  min-height: 90px;
+}
+
+.chat-line {
+  padding: 2px 0;
+  word-break: break-word;
+}
+
+.chat-meta {
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+.chat-meta strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chat-form {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  outline: none;
+}
+
+.chat-form input:focus {
+  border-color: var(--accent);
+}
+
+.chat-form button {
+  padding: 8px 12px;
+}
+
 .log div {
   padding: 2px 0;
 }

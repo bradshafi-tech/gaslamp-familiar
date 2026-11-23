@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { TOWN_BOUNDS, WORLD_NODES, type WorldNode } from "../content/world";
 import { PET_SPECIES } from "../content/pets";
+import { makeDragonInstance, makeEggInstance } from "./dragon";
 
 export type InteractTarget = {
   node: WorldNode;
@@ -14,7 +15,10 @@ export class World3D {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   player: THREE.Group;
-  petMesh: THREE.Mesh;
+  petRoot: THREE.Group;
+  petOrb: THREE.Mesh;
+  petDragon: THREE.Object3D | null = null;
+  activePetSpecies: string | null = null;
   targetMarker: THREE.Mesh;
   raycaster = new THREE.Raycaster();
   pointer = new THREE.Vector2();
@@ -22,6 +26,7 @@ export class World3D {
   nodeMeshes = new Map<string, THREE.Object3D>();
   enemyHp = new Map<string, number>();
   nodeCooldown = new Map<string, number>();
+  dynamicNodes: WorldNode[] = [];
 
   moveTarget: THREE.Vector3 | null = null;
   speed = 6;
@@ -96,12 +101,14 @@ export class World3D {
     this.player.add(body, hat);
     this.scene.add(this.player);
 
-    this.petMesh = new THREE.Mesh(
+    this.petRoot = new THREE.Group();
+    this.petRoot.visible = false;
+    this.petOrb = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 12, 12),
       new THREE.MeshStandardMaterial({ color: 0xf6e27a, emissive: 0x664400, emissiveIntensity: 0.35 })
     );
-    this.petMesh.visible = false;
-    this.scene.add(this.petMesh);
+    this.petRoot.add(this.petOrb);
+    this.scene.add(this.petRoot);
 
     this.targetMarker = new THREE.Mesh(
       new THREE.RingGeometry(0.35, 0.48, 24),
@@ -124,11 +131,78 @@ export class World3D {
 
   setActivePetColor(color: number | null) {
     if (color == null) {
-      this.petMesh.visible = false;
+      this.petRoot.visible = false;
       return;
     }
-    this.petMesh.visible = true;
-    (this.petMesh.material as THREE.MeshStandardMaterial).color.setHex(color);
+    this.petRoot.visible = true;
+    if (this.activePetSpecies !== "dwarf_dragon") {
+      this.petOrb.visible = true;
+      if (this.petDragon) this.petDragon.visible = false;
+      (this.petOrb.material as THREE.MeshStandardMaterial).color.setHex(color);
+      (this.petOrb.material as THREE.MeshStandardMaterial).emissive.setHex(color);
+    }
+  }
+
+  setActivePetSpecies(speciesId: string | null, colorHex?: number) {
+    this.activePetSpecies = speciesId;
+    if (!speciesId) {
+      this.petRoot.visible = false;
+      return;
+    }
+    this.petRoot.visible = true;
+    if (speciesId === "dwarf_dragon") {
+      this.petOrb.visible = false;
+      const hex = colorHex ?? PET_SPECIES.dwarf_dragon.color;
+      if (this.petDragon) {
+        this.petRoot.remove(this.petDragon);
+        this.petDragon = null;
+      }
+      this.petDragon = makeDragonInstance(0.32, hex);
+      this.petRoot.add(this.petDragon);
+      this.petDragon.visible = true;
+    } else {
+      if (this.petDragon) this.petDragon.visible = false;
+      this.petOrb.visible = true;
+      const color = PET_SPECIES[speciesId]?.color ?? 0xf6e27a;
+      (this.petOrb.material as THREE.MeshStandardMaterial).color.setHex(color);
+      (this.petOrb.material as THREE.MeshStandardMaterial).emissive.setHex(color);
+      (this.petOrb.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.3;
+    }
+  }
+
+  spawnGroundEgg(x: number, z: number, itemId = "amethyst_egg") {
+    // Only one world egg at a time
+    for (const n of [...this.dynamicNodes]) {
+      if (n.kind === "ground_egg") this.removeDynamicNode(n.id);
+    }
+    const id = `ground_egg_${Date.now().toString(36)}`;
+    const node: WorldNode = {
+      id,
+      kind: "ground_egg",
+      label: "Amethyst Dragon Egg",
+      x,
+      z,
+      meta: { itemId, interactRadius: 2.2 },
+    };
+    this.dynamicNodes.push(node);
+    const mesh = this.makeNodeMesh(node);
+    mesh.position.set(x, 0, z);
+    mesh.userData.nodeId = id;
+    this.scene.add(mesh);
+    this.nodeMeshes.set(id, mesh);
+  }
+
+  removeDynamicNode(id: string) {
+    this.dynamicNodes = this.dynamicNodes.filter((n) => n.id !== id);
+    const mesh = this.nodeMeshes.get(id);
+    if (mesh) {
+      this.scene.remove(mesh);
+      this.nodeMeshes.delete(id);
+    }
+  }
+
+  allNodes(): WorldNode[] {
+    return [...WORLD_NODES, ...this.dynamicNodes];
   }
 
   private buildBuildings() {
@@ -238,12 +312,22 @@ export class World3D {
       body.position.y = 0.8;
       g.add(body);
     } else if (node.kind === "enemy") {
-      const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.3, 0.4, 4, 8),
-        new THREE.MeshStandardMaterial({ color: node.meta?.boss ? 0x6a4cff : 0x5a5a62 })
-      );
-      body.position.y = 0.7;
-      g.add(body);
+      if (node.meta?.model === "purple-dragon") {
+        const dragon = makeDragonInstance(1.85);
+        dragon.rotation.y = Math.PI * 0.75;
+        g.add(dragon);
+        // Soft purple aura
+        const aura = new THREE.PointLight(0x8a4dff, 0.7, 12);
+        aura.position.set(0, 2.2, 0);
+        g.add(aura);
+      } else {
+        const body = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.3, 0.4, 4, 8),
+          new THREE.MeshStandardMaterial({ color: node.meta?.boss ? 0x6a4cff : 0x5a5a62 })
+        );
+        body.position.y = 0.7;
+        g.add(body);
+      }
     } else if (node.kind === "wild_pet") {
       const sp = PET_SPECIES[String(node.meta?.species ?? "")];
       const orb = new THREE.Mesh(
@@ -264,6 +348,12 @@ export class World3D {
       arch.position.y = 1.2;
       arch.rotation.y = Math.PI / 2;
       g.add(arch);
+    } else if (node.kind === "ground_egg") {
+      const egg = makeEggInstance(0.9);
+      g.add(egg);
+      const glow = new THREE.PointLight(0xb48cff, 0.85, 6);
+      glow.position.set(0, 0.8, 0);
+      g.add(glow);
     }
     return g;
   }
@@ -293,11 +383,18 @@ export class World3D {
 
   private nearestNode(point: THREE.Vector3, maxDist = 1.6): WorldNode | null {
     let best: WorldNode | null = null;
-    let bestD = maxDist;
-    for (const node of WORLD_NODES) {
+    let bestD = Infinity;
+    for (const node of this.allNodes()) {
+      const mesh = this.nodeMeshes.get(node.id);
+      if (mesh && !mesh.visible) continue;
+      // Prefer loot eggs over enemies when both are in range
+      const radius = Number(node.meta?.interactRadius ?? maxDist);
       const d = Math.hypot(node.x - point.x, node.z - point.z);
-      if (d < bestD) {
-        bestD = d;
+      const limit = Math.max(maxDist, radius);
+      if (d > limit) continue;
+      const score = d - (node.kind === "ground_egg" ? 1.5 : 0);
+      if (score < bestD) {
+        bestD = score;
         best = node;
       }
     }
@@ -308,7 +405,7 @@ export class World3D {
     if (event.button !== 0) return;
     const point = this.pickGround(event);
     if (!point) return;
-    const node = this.nearestNode(point, 1.8);
+    const node = this.nearestNode(point, 2.8);
     this.moveTarget = point;
     this.targetMarker.position.set(point.x, 0.05, point.z);
     this.targetMarker.visible = true;
@@ -343,7 +440,7 @@ export class World3D {
         this.moveTarget = null;
         this.targetMarker.visible = false;
         if (this.pendingInteract) {
-          const node = WORLD_NODES.find((n) => n.id === this.pendingInteract);
+          const node = this.allNodes().find((n) => n.id === this.pendingInteract);
           this.pendingInteract = undefined;
           if (node) this.onInteract?.(node);
         }
@@ -365,13 +462,17 @@ export class World3D {
     this.camera.lookAt(this.player.position.x, 0.8, this.player.position.z);
 
     // Pet follows
-    if (this.petMesh.visible) {
+    if (this.petRoot.visible) {
+      const isDrake = this.activePetSpecies === "dwarf_dragon";
+      const followDist = isDrake ? 1.25 : 0.9;
+      const bob = isDrake ? 0.05 : 0.08;
       const target = new THREE.Vector3(
-        this.player.position.x - Math.sin(this.player.rotation.y) * 0.9,
-        0.45 + Math.sin(performance.now() / 400) * 0.08,
-        this.player.position.z - Math.cos(this.player.rotation.y) * 0.9
+        this.player.position.x - Math.sin(this.player.rotation.y) * followDist,
+        (isDrake ? 0 : 0.45) + Math.sin(performance.now() / 400) * bob,
+        this.player.position.z - Math.cos(this.player.rotation.y) * followDist
       );
-      this.petMesh.position.lerp(target, 1 - Math.pow(0.01, dt));
+      this.petRoot.position.lerp(target, 1 - Math.pow(0.01, dt));
+      this.petRoot.rotation.y = this.player.rotation.y;
     }
 
     // Soft pulse on marker

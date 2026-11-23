@@ -6,7 +6,6 @@ import { itemName } from "./content/items";
 import { GameState } from "./game/state";
 import { World3D } from "./game/world3d";
 import { castSpark, eatFood, interact } from "./game/actions";
-import { WORLD_NODES } from "./content/world";
 import * as api from "./net/api";
 
 const app = document.getElementById("app")!;
@@ -58,7 +57,15 @@ app.innerHTML = `
             <button type="button" id="btn-eat">Eat Bread</button>
             <button type="button" id="btn-nearest">Interact nearest</button>
           </div>
-          <p class="muted" style="margin:8px 0 0;font-size:0.8rem">Click the ground to walk. Click (or use Interact nearest) on NPCs, trees, rocks, enemies, or wild familiars.</p>
+          <p class="muted" style="margin:8px 0 0;font-size:0.8rem">Click to walk. Defeat the Amethyst Drake — click the egg on the ground to receive a Dwarf Dragon.</p>
+        </div>
+        <div class="panel chat-panel">
+          <h2>Chat <span class="muted" style="font-weight:400;font-size:0.75rem">(global)</span></h2>
+          <div class="chat-log" id="chat-log"></div>
+          <form class="chat-form" id="chat-form">
+            <input id="chat-input" maxlength="240" placeholder="Say something…" autocomplete="off" />
+            <button type="submit" class="primary">Send</button>
+          </form>
         </div>
       </div>
       <div class="panel log" id="log"></div>
@@ -76,12 +83,42 @@ let world: World3D | null = null;
 let user: AuthUser | null = null;
 let saveTimer = 0;
 let lastUi = 0;
+let chatAfter = 0;
+let chatTimer = 0;
+const seenChat = new Set<string>();
 
 function pushLog(msg: string) {
   const line = document.createElement("div");
   line.textContent = msg;
   logEl.prepend(line);
   while (logEl.childElementCount > 40) logEl.lastChild?.remove();
+}
+
+function appendChat(msg: api.ChatMessage) {
+  if (seenChat.has(msg.id)) return;
+  seenChat.add(msg.id);
+  const el = document.getElementById("chat-log")!;
+  const row = document.createElement("div");
+  row.className = "chat-line";
+  const time = new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  row.innerHTML = `<span class="chat-meta">${time} <strong>${escapeHtml(msg.username)}</strong></span> ${escapeHtml(msg.body)}`;
+  el.appendChild(row);
+  el.scrollTop = el.scrollHeight;
+  chatAfter = Math.max(chatAfter, msg.created_at);
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+async function pollChat() {
+  if (!user) return;
+  try {
+    const { messages } = await api.fetchChat(chatAfter);
+    for (const m of messages) appendChat(m);
+  } catch {
+    /* ignore transient */
+  }
 }
 
 function renderHud() {
@@ -122,8 +159,9 @@ function renderHud() {
       s.pets
         .map((p) => {
           const sp = PET_SPECIES[p.speciesId];
+          const colorNote = p.colorName ? ` · ${p.colorName}` : "";
           return `<div class="pet-item ${p.active ? "active" : ""}" data-pet="${p.id}">
-            <strong>${p.name}</strong> · lv ${p.level}
+            <strong>${p.name}</strong> · lv ${p.level}${colorNote}
             <div class="muted">${(sp?.traits ?? p.traits).join(", ")}</div>
           </div>`;
         })
@@ -141,16 +179,26 @@ function renderHud() {
   const inv = document.getElementById("inv-panel")!;
   inv.innerHTML =
     `<h2>Inventory</h2>` +
-    s.inventory
-      .map((slot) => `<div class="inv-item">${itemName(slot.itemId)} × ${slot.qty}</div>`)
-      .join("");
+    (s.inventory.length
+      ? s.inventory
+          .map((slot) => `<div class="inv-item">${itemName(slot.itemId)} × ${slot.qty}</div>`)
+          .join("")
+      : `<p class="muted">Empty</p>`);
 }
 
 function syncPetVisual() {
   if (!state || !world) return;
   const pet = state.activePet();
-  const color = pet ? PET_SPECIES[pet.speciesId]?.color ?? 0xf6e27a : null;
-  world.setActivePetColor(color);
+  if (!pet) {
+    world.setActivePetSpecies(null);
+    return;
+  }
+  if (pet.speciesId === "dwarf_dragon") {
+    world.setActivePetSpecies("dwarf_dragon", pet.color);
+    return;
+  }
+  world.setActivePetSpecies(pet.speciesId);
+  world.setActivePetColor(PET_SPECIES[pet.speciesId]?.color ?? 0xf6e27a);
 }
 
 async function persist(force = false) {
@@ -181,6 +229,7 @@ async function enterWorld(u: AuthUser, save: CharacterSave) {
   world.onInteract = (node) => {
     if (!state || !world) return;
     interact(node, state, world);
+    syncPetVisual();
     renderHud();
   };
   world.onHover = (label) => {
@@ -195,12 +244,23 @@ async function enterWorld(u: AuthUser, save: CharacterSave) {
 
   pushLog("Welcome to Brindlewick. Click to walk — talk to Mabel by the square.");
   renderHud();
+  void pollChat();
+  if (chatTimer) window.clearInterval(chatTimer);
+  chatTimer = window.setInterval(() => void pollChat(), 2500);
 
   // Dev/test hook for automation
   (window as unknown as { __va?: unknown }).__va = {
     state: () => state,
     world: () => world,
     interactNearest: () => document.getElementById("btn-nearest")?.dispatchEvent(new Event("click")),
+    interactNode: (id: string) => {
+      if (!state || !world) return;
+      const node = world.allNodes().find((n) => n.id === id);
+      if (!node) return;
+      interact(node, state, world);
+      syncPetVisual();
+      renderHud();
+    },
     setPos: (x: number, z: number) => {
       world?.setPlayerPosition(x, z);
       if (state) {
@@ -278,15 +338,32 @@ document.getElementById("btn-eat")!.addEventListener("click", () => {
   renderHud();
 });
 
+document.getElementById("chat-form")!.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("chat-input") as HTMLInputElement;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  try {
+    const { message } = await api.sendChat(text);
+    appendChat(message);
+  } catch (err) {
+    pushLog(`Chat failed: ${(err as Error).message}`);
+  }
+});
+
 document.getElementById("btn-nearest")!.addEventListener("click", () => {
   if (!state || !world) return;
   const pos = world.getPlayerPos();
-  let best = null as (typeof WORLD_NODES)[number] | null;
+  let best = null as ReturnType<World3D["allNodes"]>[number] | null;
   let bestD = 2.8;
-  for (const node of WORLD_NODES) {
+  for (const node of world.allNodes()) {
+    const mesh = world.nodeMeshes.get(node.id);
+    if (mesh && !mesh.visible) continue;
     const d = Math.hypot(node.x - pos.x, node.z - pos.z);
-    if (d < bestD) {
-      bestD = d;
+    const score = d - (node.kind === "ground_egg" ? 1.5 : 0);
+    if (score < bestD) {
+      bestD = score;
       best = node;
     }
   }
@@ -295,6 +372,7 @@ document.getElementById("btn-nearest")!.addEventListener("click", () => {
     return;
   }
   interact(best, state, world);
+  syncPetVisual();
   renderHud();
 });
 
