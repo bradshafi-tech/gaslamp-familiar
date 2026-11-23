@@ -1,0 +1,23 @@
+{
+  "name": "victorian-adventure",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run dev --workspace=client",
+    "dev:api": "npm run dev --workspace=worker",
+    "build": "npm run build --workspace=client && npm run build --workspace=worker",
+    "deploy": "npm run build --workspace=client && npm run deploy --workspace=worker",
+    "db:local": "npm run db:local --workspace=worker",
+    "db:migrate": "npm run db:migrate --workspace=worker",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "workspaces": [
+    "client",
+    "worker",
+    "shared"
+  ],
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

@@ -1,0 +1,22 @@
+name = "victorian-adventure"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "victorian-adventure"
+database_id = "45bcca76-27cc-4541-93fd-87608283d77f"
+migrations_dir = "migrations"
+
+[assets]
+directory = "../client/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[vars]
+JWT_ISSUER = "victorian-adventure"
+
+# Set via: wrangler secret put JWT_SECRET
+# Optional local: create .dev.vars with JWT_SECRET=dev-secret-change-me

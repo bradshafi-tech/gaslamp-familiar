@@ -1,0 +1,1 @@
+{"root":["./src/main.ts","./src/vite-env.d.ts","./src/content/items.ts","./src/content/pets.ts","./src/content/quests.ts","./src/content/world.ts","./src/game/actions.ts","./src/game/state.ts","./src/game/world3d.ts","./src/net/api.ts","../shared/src/index.ts"],"version":"5.9.3"}
