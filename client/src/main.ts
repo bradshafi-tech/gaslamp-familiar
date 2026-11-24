@@ -280,8 +280,11 @@ function openBattle(node: WorldNode) {
   const screen = document.getElementById("battle-screen");
   if (!screen || !state || !world) return;
   battleOpen = true;
+  gameEl.classList.add("battle-open");
   battleEnemyMaxHp = Math.max(1, world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5));
   screen.hidden = false;
+  // Keep inventory / skills / chat usable — resize battle canvas into overlay panel
+  requestAnimationFrame(() => battleStage?.resize());
   document.getElementById("battle-enemy-name")!.textContent = node.label;
   const pet = state.followingPet() ?? state.activePet();
   document.getElementById("battle-pet-name")!.textContent = pet?.name ?? "No pet";
@@ -305,6 +308,7 @@ function closeBattle() {
   const screen = document.getElementById("battle-screen");
   if (screen) screen.hidden = true;
   battleOpen = false;
+  gameEl.classList.remove("battle-open");
   battleStage?.hide();
   document.getElementById("battle-splat-layer")!.innerHTML = "";
 }

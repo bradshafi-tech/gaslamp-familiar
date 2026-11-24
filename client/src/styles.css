@@ -154,6 +154,7 @@ input {
 .hud {
   position: absolute;
   inset: 0;
+  z-index: 40;
   pointer-events: none;
   display: grid;
   grid-template-columns: 168px 1fr auto;
@@ -692,7 +693,7 @@ input {
 
 .ctx-menu {
   position: fixed;
-  z-index: 40;
+  z-index: 45;
   min-width: 160px;
   padding: 4px;
   background: rgba(18, 24, 32, 0.96);
@@ -945,14 +946,22 @@ button.linkish {
   }
 }
 
-/* —— Pokémon-style battle screen (real Three.js meshes) —— */
+/* —— Battle overlay: sits in the playfield; HUD (inv/skills/chat) stays usable —— */
 .battle-screen {
   position: absolute;
-  inset: 0;
-  z-index: 28;
+  /* Leave room for topbar, skills rail, right dock, bottom chat */
+  top: 64px;
+  left: 178px;
+  right: min(340px, 34vw);
+  bottom: 152px;
+  z-index: 25;
   display: grid;
   grid-template-rows: 1fr auto;
-  pointer-events: auto;
+  pointer-events: none;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
 }
 .battle-screen[hidden] {
   display: none !important;
@@ -960,15 +969,17 @@ button.linkish {
 .battle-backdrop {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(60, 90, 70, 0.55), transparent 70%),
-    linear-gradient(180deg, #1a2838 0%, #243448 40%, #3a4a3a 100%);
+    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(60, 90, 70, 0.45), transparent 70%),
+    linear-gradient(180deg, rgba(26, 40, 56, 0.92) 0%, rgba(36, 52, 72, 0.9) 40%, rgba(42, 58, 48, 0.92) 100%);
 }
 .battle-stage {
   position: relative;
   z-index: 1;
   min-height: 0;
   overflow: hidden;
+  pointer-events: none;
 }
 .battle-canvas {
   position: absolute;
@@ -976,6 +987,7 @@ button.linkish {
   width: 100% !important;
   height: 100% !important;
   display: block;
+  pointer-events: none;
 }
 .battle-hud-overlay {
   position: absolute;
@@ -985,19 +997,19 @@ button.linkish {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 10vh 5vw 2vh;
+  padding: 6% 4% 3%;
 }
 .battle-hud-overlay .foe-card {
   align-self: flex-start;
-  margin-top: 4vh;
+  margin-top: 3%;
 }
 .battle-hud-card {
-  width: min(42vw, 240px);
+  width: min(42%, 220px);
   background: rgba(12, 16, 22, 0.88);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
-  pointer-events: auto;
+  pointer-events: none;
 }
 .battle-name {
   font-family: var(--font-display);
@@ -1038,13 +1050,15 @@ button.linkish {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
-  padding: 12px 16px 16px;
-  background: rgba(10, 14, 20, 0.92);
+  padding: 10px 14px 12px;
+  background: rgba(10, 14, 20, 0.94);
   border-top: 1px solid var(--line);
+  /* Only Flee / feed capture clicks — inventory & chat stay free */
+  pointer-events: auto;
 }
 .battle-feed {
   font-size: 0.85rem;
-  max-height: 4.8rem;
+  max-height: 4.2rem;
   overflow: auto;
   color: var(--ink);
 }
@@ -1072,4 +1086,13 @@ button.linkish {
 }
 .splat.battle-splat {
   position: absolute;
+}
+
+@media (max-width: 900px) {
+  .battle-screen {
+    top: 120px;
+    left: 8px;
+    right: 8px;
+    bottom: 170px;
+  }
 }
