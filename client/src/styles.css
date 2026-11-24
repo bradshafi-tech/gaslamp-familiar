@@ -611,6 +611,20 @@ button.linkish {
   text-decoration: underline;
 }
 
+.combat-subhead {
+  margin: 12px 0 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.style-pick.spell-pick.active {
+  border-color: #6a9ec9;
+  box-shadow: inset 0 0 0 1px rgba(106, 158, 201, 0.35);
+}
+
 .combat-status[hidden] {
   display: none !important;
 }

@@ -95,6 +95,18 @@ export const RESEARCH_DEFS: Record<string, ResearchDef> = {
     category: "misc",
     note: "Crafted melee — 4 ticks between hits, better damage.",
   },
+  weapon_basic_staff: {
+    id: "weapon_basic_staff",
+    name: "Basic Staff",
+    category: "misc",
+    note: "5-tick weapon. Equip to select Water in the Combat panel.",
+  },
+  item_water_essence: {
+    id: "item_water_essence",
+    name: "Water Essence",
+    category: "misc",
+    note: "Dropped by Alley Rats. Fuel for the Water spell.",
+  },
 };
 
 for (const sp of Object.values(PET_SPECIES)) {

@@ -148,8 +148,13 @@ export class GameSession {
   private resolvePlayerHit() {
     const node = this.livingCombatTarget();
     if (!node) return;
-    const id = node.id;
 
+    if (this.state.save.selectedSpell === "water") {
+      this.resolveWaterHit(node);
+      return;
+    }
+
+    const id = node.id;
     let hp = this.world.enemyHp.get(id) ?? Number(node.meta?.hp ?? 5);
     const style = this.state.save.attackStyle;
     const atk = this.state.save.skills.attack.level;
@@ -176,18 +181,82 @@ export class GameSession {
     }
 
     if (hp <= 0) {
-      this.state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
-      if (node.meta?.xpMagic) this.state.grantXp("magic", Number(node.meta.xpMagic));
-      this.state.addItem("iron_scrap", 1);
-      this.world.hideEnemy(id);
-      setTimeout(() => this.world.showEnemy(id, Number(node.meta?.hp ?? 5)), 20000);
-      this.clearCombat(`${node.label} defeated! Combat ended.`);
-      this.onEnemyDefeated?.(node);
-      this.refresh();
+      this.onEnemyKilled(node);
       return;
     }
 
     this.queuePlayerHit();
+    this.refresh();
+  }
+
+  /** Level-1 Water — staff + Water Essence; Magic XP. */
+  private resolveWaterHit(node: WorldNode) {
+    const id = node.id;
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    const magicLvl = this.state.save.skills.magic.level;
+    const pos = this.world.nodeWorldPos(id) || { x: node.x, y: 1.2, z: node.z };
+
+    if (!wpn.allowsMagic) {
+      this.state.log("[Combat] Water needs a staff equipped — falling back to melee.");
+      this.state.setSelectedSpell(null);
+      this.resolvePlayerHit();
+      return;
+    }
+    if (magicLvl < 1) {
+      this.state.log("[Combat] Need Magic level 1 for Water.");
+      this.queuePlayerHit();
+      this.refresh();
+      return;
+    }
+    if (this.state.invQty("water_essence") < 1) {
+      this.state.log("[Combat] Out of Water Essence — switching to melee style.");
+      this.state.setSelectedSpell(null);
+      this.resolvePlayerHit();
+      return;
+    }
+    this.state.removeItem("water_essence", 1);
+
+    const magBonus = wpn.magicBonus ?? 0;
+    const accuracy = magicLvl + magBonus + Math.random() * 8;
+    const evade = Number(node.meta?.boss ? 9 : 5) + Math.random() * 5;
+    let hp = this.world.enemyHp.get(id) ?? Number(node.meta?.hp ?? 5);
+
+    if (accuracy < evade) {
+      this.state.log(`[Combat] Water misses ${node.label}.`);
+      this.onSplat?.(pos, "MISS", "miss");
+    } else {
+      const maxHit = Math.max(1, Math.floor(magicLvl / 2) + magBonus);
+      const dmg = 1 + Math.floor(Math.random() * maxHit);
+      hp -= dmg;
+      this.world.enemyHp.set(id, hp);
+      this.state.grantXp("magic", 12 + dmg * 2);
+      this.state.log(`[Combat] Water hits ${node.label} for ${dmg} — ${Math.max(0, hp)} hp left.`);
+      this.onSplat?.(pos, `−${dmg}`, "hit");
+      this.state.trainPet(8);
+    }
+
+    if (hp <= 0) {
+      this.onEnemyKilled(node);
+      return;
+    }
+    this.queuePlayerHit();
+    this.refresh();
+  }
+
+  private onEnemyKilled(node: WorldNode) {
+    const id = node.id;
+    this.state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
+    if (node.meta?.xpMagic) this.state.grantXp("magic", Number(node.meta.xpMagic));
+    this.state.addItem("iron_scrap", 1);
+    // Alley Rats drip Water Essence for the Water spell
+    if (node.id.includes("rat") || node.label.toLowerCase().includes("rat")) {
+      this.state.addItem("water_essence", 1);
+      this.state.log("The rat leaves Water Essence.");
+    }
+    this.world.hideEnemy(id);
+    setTimeout(() => this.world.showEnemy(id, Number(node.meta?.hp ?? 5)), 20000);
+    this.clearCombat(`${node.label} defeated! Combat ended.`);
+    this.onEnemyDefeated?.(node);
     this.refresh();
   }
 
@@ -254,7 +323,9 @@ export class GameSession {
     if (!node) return null;
     const hp = this.world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
     const wpn = equippedWeapon(this.state.save.equipment.weapon);
-    return `Fighting ${node.label} · ${Math.max(0, hp)} hp · ${wpn.name} ${this.weaponTicks()}t`;
+    const spell = this.state.save.selectedSpell;
+    const mode = spell === "water" ? "Water" : wpn.name;
+    return `Fighting ${node.label} · ${Math.max(0, hp)} hp · ${mode} ${this.weaponTicks()}t`;
   }
 
   unequipWeapon() {

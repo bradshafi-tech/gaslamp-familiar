@@ -204,28 +204,53 @@ function hasBronzeSword(state: GameState): boolean {
   return state.invQty("bronze_sword") > 0 || state.save.equipment.weapon === "bronze_sword";
 }
 
+function hasBasicStaff(state: GameState): boolean {
+  return state.invQty("basic_staff") > 0 || state.save.equipment.weapon === "basic_staff";
+}
+
 function craft(state: GameState) {
-  if (state.invQty("bronze_bar") < 1) {
-    state.log("Need a bronze bar — smelt copper + tin at the furnace first.");
-    return;
-  }
-  // First sword from ores; further bars make the quest lure.
-  if (!hasBronzeSword(state)) {
-    state.removeItem("bronze_bar", 1);
-    if (!state.addItem("bronze_sword", 1)) {
-      state.addItem("bronze_bar", 1);
+  // Bronze bar → sword (first) or lure (quest)
+  if (state.invQty("bronze_bar") >= 1) {
+    if (!hasBronzeSword(state)) {
+      state.removeItem("bronze_bar", 1);
+      if (!state.addItem("bronze_sword", 1)) {
+        state.addItem("bronze_bar", 1);
+        return;
+      }
+      state.grantXp("crafting", 40);
+      state.log("You craft a Bronze Sword. Use it in Inventory to equip.");
       return;
     }
-    state.grantXp("crafting", 40);
-    state.log("You craft a Bronze Sword. Use it in Inventory to equip.");
+    state.removeItem("bronze_bar", 1);
+    state.addItem("crafted_lure", 1);
+    state.grantXp("crafting", 35);
+    state.log("You craft a lure.");
+    const q = state.quest("q2_catcher_path");
+    if (q.status === "active") state.advanceQuest("q2_catcher_path", 3, "crafted");
     return;
   }
-  state.removeItem("bronze_bar", 1);
-  state.addItem("crafted_lure", 1);
-  state.grantXp("crafting", 35);
-  state.log("You craft a lure.");
-  const q = state.quest("q2_catcher_path");
-  if (q.status === "active") state.advanceQuest("q2_catcher_path", 3, "crafted");
+
+  // 2 tree logs + iron scrap → Basic Staff
+  if (state.invQty("tree_logs") >= 2 && state.invQty("iron_scrap") >= 1) {
+    if (hasBasicStaff(state)) {
+      state.log("You already have a Basic Staff.");
+      return;
+    }
+    state.removeItem("tree_logs", 2);
+    state.removeItem("iron_scrap", 1);
+    if (!state.addItem("basic_staff", 1)) {
+      state.addItem("tree_logs", 2);
+      state.addItem("iron_scrap", 1);
+      return;
+    }
+    state.grantXp("crafting", 45);
+    state.log("You craft a Basic Staff (5-tick). Equip it to cast Water.");
+    return;
+  }
+
+  state.log(
+    "Craft: bronze bar → sword/lure · 2 tree logs + iron scrap → Basic Staff."
+  );
 }
 
 /** Fallback if session missing */

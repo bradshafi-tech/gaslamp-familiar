@@ -69,6 +69,25 @@ export const ATTACK_STYLES: { id: AttackStyle; label: string; desc: string }[] =
   { id: "controlled", label: "Controlled", desc: "Splits XP across Attack, Strength, Defence." },
 ];
 
+/** Combat spells selectable beside melee styles (staff + runes required in combat). */
+export type CombatSpellId = "water";
+
+export const COMBAT_SPELLS: {
+  id: CombatSpellId;
+  label: string;
+  level: number;
+  runeId: string;
+  desc: string;
+}[] = [
+  {
+    id: "water",
+    label: "Water",
+    level: 1,
+    runeId: "water_essence",
+    desc: "Lvl 1 Magic · staff + Water Essence · Magic XP.",
+  },
+];
+
 export type PetInstance = {
   id: string;
   speciesId: string;
@@ -125,6 +144,8 @@ export type CharacterSave = {
     tool?: string;
   };
   attackStyle: AttackStyle;
+  /** When set, combat uses this spell instead of melee styles (needs staff + runes). */
+  selectedSpell: CombatSpellId | null;
   research: ResearchEntry[];
   hp: number;
   maxHp: number;
@@ -176,12 +197,13 @@ export function defaultSave(): CharacterSave {
     // Unarmed fist by default — craft Bronze Sword from copper + tin.
     equipment: { tool: "bronze_axe" },
     attackStyle: "accurate",
+    selectedSpell: null,
     research: [],
     hp: 10,
     maxHp: 10,
     gold: 25,
     unlockedZones: ["town", "outskirts"],
-    version: 4,
+    version: 5,
   };
 }
 
@@ -228,6 +250,8 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     skills,
     inventory,
     attackStyle: raw.attackStyle || "accurate",
+    selectedSpell:
+      raw.selectedSpell === "water" ? "water" : raw.selectedSpell === null ? null : null,
     research: Array.isArray(raw.research) ? raw.research : [],
     equipment: raw.equipment
       ? {
@@ -242,7 +266,7 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     pets,
     quests: raw.quests?.length ? raw.quests : base.quests,
     unlockedZones: raw.unlockedZones?.length ? raw.unlockedZones : base.unlockedZones,
-    version: Math.max(4, raw.version ?? 1),
+    version: Math.max(5, raw.version ?? 1),
   };
 }
 

@@ -1,6 +1,7 @@
 import "./styles.css";
 import {
   ATTACK_STYLES,
+  COMBAT_SPELLS,
   INV_SIZE,
   LIGHT_ORB_ASHES_TO_L2,
   LIGHT_ORB_OAK_TO_L30,
@@ -9,13 +10,14 @@ import {
   SKILL_IDS,
   SKILL_LABELS,
   type AttackStyle,
+  type CombatSpellId,
   type AuthUser,
   type CharacterSave,
   type SkillId,
 } from "@shared/index";
 import { PET_SPECIES } from "./content/pets";
 import { QUESTS } from "./content/quests";
-import { ITEMS, itemName } from "./content/items";
+import { ITEMS, equippedWeapon, itemName } from "./content/items";
 import { GameState } from "./game/state";
 import { World3D } from "./game/world3d";
 import { castSpark, eatFood, handleEnemyDefeated, interact } from "./game/actions";
@@ -73,7 +75,7 @@ app.innerHTML = `
           <button type="button" class="tab-btn" data-tab="quests" role="tab">Quests</button>
           <button type="button" class="tab-btn" data-tab="pets" role="tab">Pets</button>
           <button type="button" class="tab-btn" data-tab="research" role="tab">Research</button>
-          <button type="button" class="tab-btn" data-tab="styles" role="tab">Styles</button>
+          <button type="button" class="tab-btn" data-tab="styles" role="tab">Combat</button>
           <button type="button" class="tab-btn" data-tab="settings" role="tab">Settings</button>
         </div>
         <div class="tab-panel" id="tab-panel" role="tabpanel"></div>
@@ -431,21 +433,36 @@ function renderTabContent() {
     const wpnId = s.equipment.weapon;
     const wpn = wpnId && ITEMS[wpnId] ? ITEMS[wpnId] : ITEMS.fist;
     const ticks = wpn.attackTicks ?? 5;
+    const spellActive = s.selectedSpell;
+    const essence = state.invQty("water_essence");
+    const canStaff = !!wpn.allowsMagic;
     tabPanel.innerHTML =
-      `<h2>Attack Style</h2>
-      <p class="muted" style="margin:0 0 10px;font-size:0.82rem">Weapon: <strong>${escapeHtml(wpn.name)}</strong> · ${ticks} ticks between hits${
+      `<h2>Combat</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:0.82rem">Weapon: <strong>${escapeHtml(wpn.name)}</strong> · ${ticks} ticks${
         wpnId ? ` · <button type="button" class="linkish" id="btn-unequip">Unequip</button>` : " (unarmed)"
       }</p>
+      <h3 class="combat-subhead">Melee styles</h3>
       <div class="style-list">` +
       ATTACK_STYLES.map(
         (st) =>
-          `<button type="button" class="style-pick ${s.attackStyle === st.id ? "active" : ""}" data-style="${st.id}">
+          `<button type="button" class="style-pick ${!spellActive && s.attackStyle === st.id ? "active" : ""}" data-style="${st.id}">
             <strong>${st.label}</strong>
             <span class="muted">${st.desc}</span>
           </button>`
       ).join("") +
       `</div>
-      <p class="muted" style="margin-top:12px;font-size:0.78rem">Fist 5t · Bronze Sword 4t · Alley Rat 4t (weak). Craft sword: mine → furnace → crafting station.</p>`;
+      <h3 class="combat-subhead">Magic spells</h3>
+      <div class="style-list">` +
+      COMBAT_SPELLS.map((sp) => {
+        const locked = s.skills.magic.level < sp.level;
+        const active = spellActive === sp.id;
+        return `<button type="button" class="style-pick spell-pick ${active ? "active" : ""}" data-spell="${sp.id}" ${locked ? "disabled" : ""}>
+            <strong>${sp.label}</strong>
+            <span class="muted">${sp.desc}${canStaff ? "" : " · equip staff"}${essence ? ` · ${essence} essence` : " · no essence"}</span>
+          </button>`;
+      }).join("") +
+      `</div>
+      <p class="muted" style="margin-top:12px;font-size:0.78rem">Fist 5t · Sword 4t · Staff 5t + Water · Rats 4t (weak, drop essence). Staff: 2 logs + scrap at crafting station.</p>`;
     tabPanel.querySelector("#btn-unequip")?.addEventListener("click", () => {
       session?.unequipWeapon();
       renderHud();
@@ -453,7 +470,20 @@ function renderTabContent() {
     tabPanel.querySelectorAll("[data-style]").forEach((el) => {
       el.addEventListener("click", () => {
         state!.setAttackStyle((el as HTMLElement).dataset.style as AttackStyle);
-        pushLog(`Attack style: ${ATTACK_STYLES.find((x) => x.id === (el as HTMLElement).dataset.style)?.label}`);
+        pushLog(`Combat: melee · ${ATTACK_STYLES.find((x) => x.id === (el as HTMLElement).dataset.style)?.label}`);
+        renderHud();
+      });
+    });
+    tabPanel.querySelectorAll("[data-spell]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const id = (el as HTMLElement).dataset.spell as CombatSpellId;
+        const w = equippedWeapon(state!.save.equipment.weapon);
+        if (!w.allowsMagic) {
+          pushLog("Equip a Basic Staff before selecting Water.");
+          return;
+        }
+        state!.setSelectedSpell(id);
+        pushLog(`Combat: spell · ${COMBAT_SPELLS.find((x) => x.id === id)?.label}`);
         renderHud();
       });
     });
@@ -497,8 +527,12 @@ function renderHud() {
   const s = state.save;
   document.getElementById("hp")!.textContent = `${s.hp}/${s.maxHp}`;
   document.getElementById("gold")!.textContent = String(s.gold);
-  const style = ATTACK_STYLES.find((x) => x.id === s.attackStyle);
-  document.getElementById("style-label")!.textContent = style ? `Style ${style.label}` : "";
+  if (s.selectedSpell === "water") {
+    document.getElementById("style-label")!.textContent = "Spell Water";
+  } else {
+    const style = ATTACK_STYLES.find((x) => x.id === s.attackStyle);
+    document.getElementById("style-label")!.textContent = style ? `Style ${style.label}` : "";
+  }
   const combatEl = document.getElementById("combat-status")!;
   const combat = session?.combatStatus() ?? null;
   if (combat) {

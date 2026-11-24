@@ -9,6 +9,7 @@ import {
   makeInstanceId,
   normalizeSave,
   type AttackStyle,
+  type CombatSpellId,
   type CharacterSave,
   type InventorySlot,
   type PetInstance,
@@ -117,6 +118,12 @@ export class GameState {
 
   setAttackStyle(style: AttackStyle) {
     this.save.attackStyle = style;
+    this.save.selectedSpell = null;
+    this.mark();
+  }
+
+  setSelectedSpell(spell: CombatSpellId | null) {
+    this.save.selectedSpell = spell;
     this.mark();
   }
 

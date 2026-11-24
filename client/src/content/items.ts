@@ -10,6 +10,10 @@ export type ItemDef = {
   /** Bonus to accuracy / max hit when equipped. */
   attackBonus?: number;
   strengthBonus?: number;
+  /** Enables level-1 Water (and later) combat spells when equipped. */
+  allowsMagic?: boolean;
+  /** Bonus to magic hit / accuracy when casting with this weapon. */
+  magicBonus?: number;
   examine: string;
   desc: string;
 };
@@ -60,6 +64,27 @@ export const ITEMS: Record<string, ItemDef> = {
     strengthBonus: 3,
     examine: "Crafted from a bronze bar (copper + tin). 4-tick attacks, stronger than fists.",
     desc: "Melee weapon — 4-tick attack, +3 accuracy/strength.",
+  },
+  basic_staff: {
+    id: "basic_staff",
+    name: "Basic Staff",
+    stackable: false,
+    category: "weapon",
+    attackTicks: 5,
+    attackBonus: 1,
+    strengthBonus: 0,
+    allowsMagic: true,
+    magicBonus: 2,
+    examine: "Craft from 2 tree logs + iron scrap. 5-tick melee; equips to cast Water (needs Water Essence).",
+    desc: "Magic weapon — 5-tick attacks; unlocks Water.",
+  },
+  water_essence: {
+    id: "water_essence",
+    name: "Water Essence",
+    stackable: true,
+    category: "material",
+    examine: "Condensed drip from Alley Rats. Fuel for the Water spell (staff required).",
+    desc: "Rune-like fuel for Water.",
   },
   tree_logs: {
     id: "tree_logs",
@@ -148,8 +173,8 @@ export const ITEMS: Record<string, ItemDef> = {
     name: "Iron Scrap",
     stackable: true,
     category: "material",
-    examine: "Twisted metal from fallen foes.",
-    desc: "Outskirts salvage.",
+    examine: "Twisted metal from fallen foes. Pair with 2 tree logs at the crafting station for a Basic Staff.",
+    desc: "Outskirts salvage — staff craft ingredient.",
   },
   crafted_lure: {
     id: "crafted_lure",
