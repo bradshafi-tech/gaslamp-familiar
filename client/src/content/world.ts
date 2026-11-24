@@ -7,66 +7,67 @@ export type WorldNode = {
   meta?: Record<string, string | number | boolean>;
 };
 
-/** Victorian starter town + road into magical outskirts (local coords). */
+/**
+ * Basic start map — functional skilling + combat only.
+ * No decorative town/building packs. Follower pet is spawned separately.
+ *
+ * Layout (top = +Z):
+ *   Combat (rats / shade)
+ *   Fishing
+ *   Trees (W) · spawn · Ores (E)
+ *   NPCs · Furnace · Crafting bench (S)
+ */
 export const WORLD_NODES: WorldNode[] = [
-  // Town
-  { id: "npc_mabel", kind: "npc", label: "Mabel the Lampwright", x: 2, z: -4, meta: { npc: "mabel" } },
-  { id: "npc_forge", kind: "npc", label: "Forge Master Holt", x: -6, z: 3, meta: { npc: "holt" } },
-  { id: "forge", kind: "forge", label: "Town Forge", x: -7.5, z: 4.5 },
-  { id: "bench", kind: "bench", label: "Crafting Bench", x: 6, z: 2 },
-  { id: "tree_1", kind: "tree", label: "Tree", x: 8, z: -8, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
-  { id: "tree_2", kind: "tree", label: "Tree", x: 10, z: -6, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
-  { id: "fish_pond", kind: "fish", label: "Gaslamp Pond", x: -3, z: -9, meta: { xp: 20 } },
-  { id: "wild_crow", kind: "wild_pet", label: "Cobble Crow", x: 1, z: 6, meta: { species: "cobble_crow" } },
-  { id: "rat_1", kind: "enemy", label: "Alley Rat", x: -2, z: 8, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
-  { id: "rat_2", kind: "enemy", label: "Alley Rat", x: 4, z: 9, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
+  // Stations + quest NPCs (south)
+  { id: "npc_mabel", kind: "npc", label: "Mabel the Lampwright", x: -3, z: -4, meta: { npc: "mabel" } },
+  { id: "npc_forge", kind: "npc", label: "Forge Master Holt", x: 1, z: -4, meta: { npc: "holt" } },
+  { id: "forge", kind: "forge", label: "Furnace", x: 4, z: -4 },
+  { id: "bench", kind: "bench", label: "Crafting Station", x: 6.5, z: -3.5 },
 
-  // Road / outskirts
-  { id: "rock_cu", kind: "rock", label: "Copper Vein", x: -14, z: 14, meta: { ore: "copper_ore", xp: 22 } },
-  { id: "rock_sn", kind: "rock", label: "Tin Vein", x: -12, z: 16, meta: { ore: "tin_ore", xp: 22 } },
-  { id: "tree_out", kind: "tree", label: "Tree", x: -8, z: 18, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
-  // Oak — Woodcutting 20+
+  // Woodcutting (west)
+  { id: "tree_1", kind: "tree", label: "Tree", x: -7, z: 1, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
+  { id: "tree_2", kind: "tree", label: "Tree", x: -9, z: 2.5, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
+  { id: "tree_3", kind: "tree", label: "Tree", x: -6.5, z: 3.5, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
+  { id: "tree_4", kind: "tree", label: "Tree", x: -8.5, z: 5, meta: { tree: "tree", log: "tree_logs", xp: 25 } },
   {
     id: "oak_1",
     kind: "tree",
     label: "Oak Tree",
     x: -10,
-    z: 20,
+    z: 6.5,
     meta: { tree: "oak", log: "oak_logs", xp: 55, requiredWoodcutting: 20 },
   },
   {
     id: "oak_2",
     kind: "tree",
     label: "Oak Tree",
-    x: -6,
-    z: 21,
+    x: -7.5,
+    z: 7.5,
     meta: { tree: "oak", log: "oak_logs", xp: 55, requiredWoodcutting: 20 },
   },
-  { id: "wild_hare", kind: "wild_pet", label: "Mist Hare", x: -16, z: 20, meta: { species: "mist_hare" } },
-  { id: "shade", kind: "enemy", label: "Mist Shade", x: -18, z: 22, meta: { hp: 18, xpAttack: 30, xpStr: 20, xpHp: 24, xpMagic: 15, boss: true } },
-  { id: "zone_under", kind: "zone", label: "Understreet Gate", x: -20, z: 24, meta: { zone: "understreet", requiredPetLevel: 3, requiredPetTrait: "catcher" } },
 
-  // Beyond the gate — high-tier purple dragon boss (pet reward on defeat)
+  // Fishing (north of spawn)
+  { id: "fish_pond", kind: "fish", label: "Fishing Spot", x: -1, z: 6.5, meta: { xp: 20 } },
+
+  // Mining (east)
+  { id: "rock_cu", kind: "rock", label: "Copper Vein", x: 7, z: 2, meta: { ore: "copper_ore", xp: 22 } },
+  { id: "rock_sn", kind: "rock", label: "Tin Vein", x: 9, z: 3, meta: { ore: "tin_ore", xp: 22 } },
+  { id: "rock_cu2", kind: "rock", label: "Copper Vein", x: 8, z: 5, meta: { ore: "copper_ore", xp: 22 } },
+  { id: "rock_sn2", kind: "rock", label: "Tin Vein", x: 6.5, z: 4.5, meta: { ore: "tin_ore", xp: 22 } },
+
+  // Combat (far north)
+  { id: "rat_1", kind: "enemy", label: "Alley Rat", x: 2.5, z: 9, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
+  { id: "rat_2", kind: "enemy", label: "Alley Rat", x: 4.5, z: 10, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
+  { id: "rat_3", kind: "enemy", label: "Alley Rat", x: 1, z: 10.5, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
   {
-    id: "boss_amethyst_drake",
+    id: "shade",
     kind: "enemy",
-    label: "Amethyst Drake",
-    x: -24,
-    z: 30,
-    meta: {
-      hp: 42,
-      xpAttack: 48,
-      xpStr: 32,
-      xpHp: 36,
-      xpMagic: 28,
-      boss: true,
-      bossId: "amethyst_drake",
-      model: "purple-dragon",
-      rewardEgg: "amethyst_egg",
-      requireZone: "understreet",
-      interactRadius: 2.6,
-    },
+    label: "Mist Shade",
+    x: 3,
+    z: 13,
+    meta: { hp: 18, xpAttack: 30, xpStr: 20, xpHp: 24, xpMagic: 15, boss: true },
   },
 ];
 
-export const TOWN_BOUNDS = { minX: -28, maxX: 14, minZ: -12, maxZ: 34 };
+/** Start-map walk bounds. */
+export const TOWN_BOUNDS = { minX: -12, maxX: 12, minZ: -8, maxZ: 16 };

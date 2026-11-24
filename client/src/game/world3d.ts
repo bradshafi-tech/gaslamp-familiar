@@ -2,9 +2,7 @@ import * as THREE from "three";
 import { TOWN_BOUNDS, WORLD_NODES, type WorldNode } from "../content/world";
 import { PET_SPECIES } from "../content/pets";
 import { makeDragonInstance, makeEggInstance } from "./dragon";
-import { loadStarterTown } from "./town";
 import { loadPetModel } from "./pet-models";
-import { KENNEY_PROPS, POLY_BUILDINGS, loadPlacedModels } from "./buildings";
 
 export type InteractTarget = {
   node: WorldNode;
@@ -23,6 +21,8 @@ export class World3D {
   petDragon: THREE.Object3D | null = null;
   activePetSpecies: string | null = null;
   targetMarker: THREE.Mesh;
+  combatMarker: THREE.Mesh;
+  combatTargetId: string | null = null;
   raycaster = new THREE.Raycaster();
   pointer = new THREE.Vector2();
   ground: THREE.Mesh;
@@ -47,58 +47,36 @@ export class World3D {
 
   constructor(canvasParent: HTMLElement) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1a2230);
-    this.scene.fog = new THREE.Fog(0x1a2230, 28, 55);
+    this.scene.background = new THREE.Color(0x161c26);
+    this.scene.fog = new THREE.Fog(0x161c26, 22, 42);
 
-    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 120);
-    this.camera.position.set(0, 18, 16);
+    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 80);
+    this.camera.position.set(0, 16, 14);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     canvasParent.appendChild(this.renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0xffe6c8, 0x2a3344, 1.1);
+    const hemi = new THREE.HemisphereLight(0xffe6c8, 0x2a3344, 1.05);
     this.scene.add(hemi);
-    const dir = new THREE.DirectionalLight(0xffd9a0, 0.85);
-    dir.position.set(8, 16, 6);
+    const dir = new THREE.DirectionalLight(0xffd9a0, 0.8);
+    dir.position.set(6, 14, 5);
     this.scene.add(dir);
 
-    // Cobble ground
-    const groundGeo = new THREE.PlaneGeometry(60, 60, 40, 40);
+    // Basic start map ground (functional zones, no town packs)
+    const groundGeo = new THREE.PlaneGeometry(28, 28, 1, 1);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x5c5750,
-      roughness: 0.95,
-      metalness: 0.05,
+      color: 0x4a5248,
+      roughness: 0.96,
+      metalness: 0.02,
     });
     this.ground = new THREE.Mesh(groundGeo, groundMat);
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
     this.scene.add(this.ground);
+    this.buildStartMapZones();
 
-    // Town plaza disk
-    const plaza = new THREE.Mesh(
-      new THREE.CircleGeometry(7, 32),
-      new THREE.MeshStandardMaterial({ color: 0x6e685e, roughness: 0.9 })
-    );
-    plaza.rotation.x = -Math.PI / 2;
-    plaza.position.y = 0.02;
-    this.scene.add(plaza);
-
-    // Road toward outskirts
-    const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(4, 28),
-      new THREE.MeshStandardMaterial({ color: 0x4a463e })
-    );
-    road.rotation.x = -Math.PI / 2;
-    road.position.set(-8, 0.03, 10);
-    road.rotation.z = Math.PI / 6;
-    this.scene.add(road);
-
-    this.buildBuildings(); // open-top / no roofs
-    this.buildLamps();
     this.spawnNodes();
-    void this.loadTownScene();
-    void this.loadExtraBuildings();
 
     // Player
     this.player = new THREE.Group();
@@ -132,6 +110,15 @@ export class World3D {
     this.targetMarker.position.y = 0.05;
     this.targetMarker.visible = false;
     this.scene.add(this.targetMarker);
+
+    this.combatMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.55, 0.78, 28),
+      new THREE.MeshBasicMaterial({ color: 0xc45c4a, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+    );
+    this.combatMarker.rotation.x = -Math.PI / 2;
+    this.combatMarker.position.y = 0.06;
+    this.combatMarker.visible = false;
+    this.scene.add(this.combatMarker);
 
     window.addEventListener("resize", () => this.resize());
     this.resize();
@@ -211,93 +198,42 @@ export class World3D {
     return [...WORLD_NODES, ...this.dynamicNodes];
   }
 
-  private async loadTownScene() {
-    try {
-      const town = await loadStarterTown();
-      // Offset slightly so NPCs/nodes stay readable around the plaza
-      town.position.set(0, 0, -1);
-      this.scene.add(town);
-    } catch (e) {
-      console.warn("Starter town failed to load", e);
-    }
-  }
-
-  /** Poly Pizza houses + Kenney graveyard props (roofs stripped where applicable). */
-  private async loadExtraBuildings() {
-    try {
-      const poly = await loadPlacedModels(POLY_BUILDINGS);
-      this.scene.add(poly);
-    } catch (e) {
-      console.warn("Poly buildings failed", e);
-    }
-    try {
-      const kenney = await loadPlacedModels(KENNEY_PROPS);
-      this.scene.add(kenney);
-    } catch (e) {
-      console.warn("Kenney props failed", e);
-    }
-  }
-
-  /** Open-top buildings (no roofs) — see-inside RS rule. */
-  private buildBuildings() {
-    const brick = new THREE.MeshStandardMaterial({ color: 0x8b5a4a, roughness: 0.85 });
-    const places = [
-      { x: -5, z: -2, w: 4, d: 3, h: 2.6 },
-      { x: 5, z: -1, w: 3.5, d: 3, h: 2.4 },
-      { x: -1, z: 3.5, w: 5, d: 2.5, h: 2.2 },
-      { x: 7, z: 4, w: 2.8, d: 2.8, h: 2.0 },
-    ];
-    for (const p of places) {
-      // Four walls + floor, open top
-      const floor = new THREE.Mesh(
-        new THREE.BoxGeometry(p.w, 0.08, p.d),
-        new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.9 })
+  /** Soft zone pads so the start map reads as woodland / mine / dock / workshop / combat. */
+  private buildStartMapZones() {
+    const addPad = (
+      w: number,
+      d: number,
+      x: number,
+      z: number,
+      color: number,
+      y = 0.012
+    ) => {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, d),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.02 })
       );
-      floor.position.set(p.x, 0.04, p.z);
-      this.scene.add(floor);
-      const wallMat = brick;
-      const t = 0.12;
-      const walls: [number, number, number, number, number, number][] = [
-        [p.x, p.h / 2, p.z - p.d / 2, p.w, p.h, t],
-        [p.x, p.h / 2, p.z + p.d / 2, p.w, p.h, t],
-        [p.x - p.w / 2, p.h / 2, p.z, t, p.h, p.d],
-        [p.x + p.w / 2, p.h / 2, p.z, t, p.h, p.d],
-      ];
-      for (const [x, y, z, w, h, d] of walls) {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
-        wall.position.set(x, y, z);
-        this.scene.add(wall);
-      }
-    }
-  }
-
-  private buildLamps() {
-    const posts = [
-      [0, -6],
-      [4, 1],
-      [-4, 1],
-      [-10, 12],
-      [-15, 18],
-    ];
-    for (const [x, z] of posts) {
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.1, 2.4, 8),
-        new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.6, roughness: 0.4 })
-      );
-      pole.position.set(x, 1.2, z);
-      const lamp = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 10, 10),
-        new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0xffaa33, emissiveIntensity: 0.9 })
-      );
-      lamp.position.set(x, 2.45, z);
-      const light = new THREE.PointLight(0xffc978, 0.55, 10);
-      light.position.set(x, 2.4, z);
-      this.scene.add(pole, lamp, light);
-    }
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x, y, z);
+      this.scene.add(mesh);
+    };
+    // Spawn clearing
+    addPad(6.5, 5.5, 0, 0, 0x5a6358, 0.01);
+    // Workshop (furnace + crafting)
+    addPad(8, 4.5, 3.5, -3.8, 0x4a4540, 0.014);
+    // Woodland
+    addPad(7.5, 9, -8, 4, 0x3d5240, 0.013);
+    // Mining ledge
+    addPad(6.5, 6.5, 8, 3.5, 0x5a5852, 0.013);
+    // Fishing bank
+    addPad(5, 4, -1, 6.2, 0x45564c, 0.013);
+    // Combat yard
+    addPad(8, 7, 3, 11, 0x4a4844, 0.013);
   }
 
   private spawnNodes() {
     for (const node of WORLD_NODES) {
+      // Wild/map pets stay packed as assets — only the owned follower is shown via petRoot.
+      if (node.kind === "wild_pet") continue;
       const mesh = this.makeNodeMesh(node);
       mesh.position.set(node.x, 0, node.z);
       mesh.userData.nodeId = node.id;
@@ -323,35 +259,74 @@ export class World3D {
       leaves.position.y = isOak ? 2.2 : 1.8;
       g.add(trunk, leaves);
     } else if (node.kind === "rock") {
-      g.add(
-        new THREE.Mesh(
-          new THREE.DodecahedronGeometry(0.7),
-          new THREE.MeshStandardMaterial({ color: 0x7a756c, roughness: 0.9 })
-        )
+      const oreTint = String(node.meta?.ore ?? "").includes("tin") ? 0x8a8e86 : 0x8a6a4a;
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.7),
+        new THREE.MeshStandardMaterial({ color: 0x7a756c, roughness: 0.9 })
       );
-      g.children[0].position.y = 0.4;
+      rock.position.y = 0.4;
+      const fleck = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18, 6, 6),
+        new THREE.MeshStandardMaterial({ color: oreTint, metalness: 0.35, roughness: 0.55 })
+      );
+      fleck.position.set(0.25, 0.55, 0.2);
+      g.add(rock, fleck);
     } else if (node.kind === "fish") {
       const water = new THREE.Mesh(
-        new THREE.CircleGeometry(1.4, 20),
-        new THREE.MeshStandardMaterial({ color: 0x3a6e7a, transparent: true, opacity: 0.85 })
+        new THREE.CircleGeometry(1.85, 28),
+        new THREE.MeshStandardMaterial({ color: 0x3a6e7a, transparent: true, opacity: 0.88 })
       );
       water.rotation.x = -Math.PI / 2;
       water.position.y = 0.04;
-      g.add(water);
+      const rim = new THREE.Mesh(
+        new THREE.RingGeometry(1.85, 2.15, 28),
+        new THREE.MeshStandardMaterial({ color: 0x5a5348, roughness: 0.95 })
+      );
+      rim.rotation.x = -Math.PI / 2;
+      rim.position.y = 0.045;
+      g.add(water, rim);
     } else if (node.kind === "forge") {
-      const block = new THREE.Mesh(
-        new THREE.BoxGeometry(1.4, 1, 1.2),
-        new THREE.MeshStandardMaterial({ color: 0x44444c, emissive: 0x551100, emissiveIntensity: 0.35 })
+      // Furnace / smelter — stone body, chimney, fire glow
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1.15, 1.25),
+        new THREE.MeshStandardMaterial({ color: 0x3e3e46, roughness: 0.88 })
       );
-      block.position.y = 0.5;
-      g.add(block);
+      body.position.y = 0.58;
+      const mouth = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.45, 0.2),
+        new THREE.MeshStandardMaterial({ color: 0xff6a2a, emissive: 0xff4400, emissiveIntensity: 0.85 })
+      );
+      mouth.position.set(0, 0.45, 0.55);
+      const chimney = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.28, 0.9, 8),
+        new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.8 })
+      );
+      chimney.position.set(0.35, 1.45, -0.15);
+      const glow = new THREE.PointLight(0xff6622, 0.65, 5);
+      glow.position.set(0, 0.7, 0.4);
+      g.add(body, mouth, chimney, glow);
     } else if (node.kind === "bench") {
-      const top = new THREE.Mesh(
-        new THREE.BoxGeometry(1.6, 0.2, 0.8),
-        new THREE.MeshStandardMaterial({ color: 0x6b4b2a })
+      // Crafting station — top + legs + small tool block
+      const wood = new THREE.MeshStandardMaterial({ color: 0x6b4b2a, roughness: 0.85 });
+      const top = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.9), wood);
+      top.position.y = 0.78;
+      const legGeo = new THREE.BoxGeometry(0.12, 0.72, 0.12);
+      for (const [lx, lz] of [
+        [-0.7, -0.32],
+        [0.7, -0.32],
+        [-0.7, 0.32],
+        [0.7, 0.32],
+      ] as const) {
+        const leg = new THREE.Mesh(legGeo, wood);
+        leg.position.set(lx, 0.36, lz);
+        g.add(leg);
+      }
+      const vise = new THREE.Mesh(
+        new THREE.BoxGeometry(0.35, 0.22, 0.35),
+        new THREE.MeshStandardMaterial({ color: 0x6a6e78, metalness: 0.45, roughness: 0.45 })
       );
-      top.position.y = 0.7;
-      g.add(top);
+      vise.position.set(0.45, 0.95, 0);
+      g.add(top, vise);
     } else if (node.kind === "npc") {
       const body = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.32, 0.55, 4, 8),
@@ -424,6 +399,7 @@ export class World3D {
     let best: WorldNode | null = null;
     let bestD = Infinity;
     for (const node of this.allNodes()) {
+      if (node.kind === "wild_pet") continue;
       const mesh = this.nodeMeshes.get(node.id);
       if (mesh && !mesh.visible) continue;
       // Prefer loot eggs over enemies when both are in range
@@ -478,7 +454,11 @@ export class World3D {
       this.onHover?.(PET_SPECIES[this.activePetSpecies]?.name ?? "Pet");
       return;
     }
-    this.onHover?.(node ? node.label : null);
+    if (!node) {
+      this.onHover?.(null);
+      return;
+    }
+    this.onHover?.(node.kind === "enemy" ? `Attack · ${node.label}` : node.label);
   }
 
   update(dt: number) {
@@ -531,9 +511,32 @@ export class World3D {
       const s = 1 + Math.sin(performance.now() / 200) * 0.08;
       this.targetMarker.scale.set(s, s, s);
     }
+    if (this.combatMarker.visible && this.combatTargetId) {
+      const node = this.allNodes().find((n) => n.id === this.combatTargetId);
+      if (node) {
+        this.combatMarker.position.set(node.x, 0.06, node.z);
+        const s = 1 + Math.sin(performance.now() / 160) * 0.12;
+        this.combatMarker.scale.set(s, s, s);
+      }
+    }
 
     this.updateProgressSprites(dt);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  setCombatTarget(id: string | null) {
+    this.combatTargetId = id;
+    if (!id) {
+      this.combatMarker.visible = false;
+      return;
+    }
+    const node = this.allNodes().find((n) => n.id === id);
+    if (!node) {
+      this.combatMarker.visible = false;
+      return;
+    }
+    this.combatMarker.position.set(node.x, 0.06, node.z);
+    this.combatMarker.visible = true;
   }
 
   getPlayerPos() {

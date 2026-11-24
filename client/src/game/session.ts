@@ -11,7 +11,11 @@ import { ActionScheduler, TickClock } from "./tick";
 import type { GameState } from "./state";
 import type { World3D } from "./world3d";
 
-export type SplatFn = (worldPos: { x: number; y: number; z: number }, text: string, kind: "hit" | "miss" | "heal") => void;
+export type SplatFn = (
+  worldPos: { x: number; y: number; z: number },
+  text: string,
+  kind: "hit" | "miss" | "heal" | "hurt"
+) => void;
 
 export class GameSession {
   clock = new TickClock();
@@ -73,9 +77,23 @@ export class GameSession {
       this.state.log(`${node.label} already defeated. It will return soon.`);
       return;
     }
+    if (this.combatTarget === node.id) {
+      this.world.setCombatTarget(node.id);
+      this.refresh();
+      return;
+    }
+    const switching = !!this.combatTarget;
     this.combatTarget = node.id;
+    this.world.setCombatTarget(node.id);
     this.scheduler.cancelKind("combat");
+    const hp = this.world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
+    if (switching) {
+      this.state.log(`[Combat] Switching target → ${node.label} (${hp} hp).`);
+    } else {
+      this.state.log(`[Combat] Fighting ${node.label}! (${hp} hp)`);
+    }
     this.queueCombatHit();
+    this.refresh();
   }
 
   private queueCombatHit() {
@@ -84,17 +102,26 @@ export class GameSession {
     this.scheduler.after(ticks, "combat", () => this.resolveCombatHit());
   }
 
+  private clearCombat(reason?: string) {
+    if (this.combatTarget && reason) this.state.log(`[Combat] ${reason}`);
+    this.combatTarget = null;
+    this.world.setCombatTarget(null);
+    this.scheduler.cancelKind("combat");
+  }
+
   private resolveCombatHit() {
     const id = this.combatTarget;
     if (!id) return;
     const node = this.world.allNodes().find((n) => n.id === id);
     if (!node || node.kind !== "enemy") {
-      this.combatTarget = null;
+      this.clearCombat("Combat ended.");
+      this.refresh();
       return;
     }
     const mesh = this.world.nodeMeshes.get(id);
     if (mesh && !mesh.visible) {
-      this.combatTarget = null;
+      this.clearCombat(`${node.label} is gone — combat ended.`);
+      this.refresh();
       return;
     }
 
@@ -113,15 +140,15 @@ export class GameSession {
     const pos = this.world.nodeWorldPos(id) || { x: node.x, y: 1.2, z: node.z };
 
     if (accuracy < evade) {
-      this.state.log(`You miss ${node.label}.`);
-      this.onSplat?.(pos, "0", "miss");
+      this.state.log(`[Combat] Miss → ${node.label}.`);
+      this.onSplat?.(pos, "MISS", "miss");
     } else {
       const maxHit = Math.max(1, Math.floor((str + strBonus) / 3) + (style === "aggressive" ? 1 : 0));
       const dmg = 1 + Math.floor(Math.random() * maxHit);
       hp -= dmg;
       this.world.enemyHp.set(id, hp);
-      this.state.log(`You hit ${node.label} for ${dmg}. (${Math.max(0, hp)} hp)`);
-      this.onSplat?.(pos, String(dmg), "hit");
+      this.state.log(`[Combat] You hit ${node.label} for ${dmg} — ${Math.max(0, hp)} hp left.`);
+      this.onSplat?.(pos, `−${dmg}`, "hit");
       this.grantCombatXp(style, node);
       this.state.trainPet(10);
     }
@@ -131,16 +158,15 @@ export class GameSession {
     const mitigated = Math.max(0, rawHurt - Math.floor(def / 8) - (style === "defensive" ? 1 : 0));
     if (mitigated > 0) {
       const dead = this.state.takeDamage(mitigated);
-      this.state.log(`${node.label} hits you for ${mitigated}.`);
+      this.state.log(`[Combat] ${node.label} hits you for ${mitigated}.`);
       const ppos = { x: this.world.player.position.x, y: 1.4, z: this.world.player.position.z };
-      this.onSplat?.(ppos, String(mitigated), "hit");
+      this.onSplat?.(ppos, `−${mitigated}`, "hurt");
       if (dead) {
         this.state.save.hp = this.state.save.maxHp;
         this.state.save.position = { x: 0, y: 0, z: 0 };
         this.world.setPlayerPosition(0, 0);
         this.world.showEnemy(id, Number(node.meta?.hp ?? 5));
-        this.state.log("You collapse and wake in the town square.");
-        this.combatTarget = null;
+        this.clearCombat("You were defeated — waking at spawn.");
         this.refresh();
         return;
       }
@@ -150,10 +176,9 @@ export class GameSession {
       this.state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
       if (node.meta?.xpMagic) this.state.grantXp("magic", Number(node.meta.xpMagic));
       this.state.addItem("iron_scrap", 1);
-      this.state.log(`${node.label} defeated!`);
       this.world.hideEnemy(id);
       setTimeout(() => this.world.showEnemy(id, Number(node.meta?.hp ?? 5)), 20000);
-      this.combatTarget = null;
+      this.clearCombat(`${node.label} defeated! Combat ended.`);
       this.onEnemyDefeated?.(node);
       this.refresh();
       return;
@@ -179,8 +204,21 @@ export class GameSession {
   }
 
   stopCombat() {
-    this.combatTarget = null;
-    this.scheduler.cancelKind("combat");
+    if (this.combatTarget) {
+      const node = this.world.allNodes().find((n) => n.id === this.combatTarget);
+      this.clearCombat(node ? `Stopped fighting ${node.label}.` : "Combat ended.");
+    } else {
+      this.clearCombat();
+    }
+    this.refresh();
+  }
+
+  combatStatus(): string | null {
+    if (!this.combatTarget) return null;
+    const node = this.world.allNodes().find((n) => n.id === this.combatTarget);
+    if (!node) return null;
+    const hp = this.world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
+    return `Fighting ${node.label} · ${Math.max(0, hp)} hp`;
   }
 
   researchNode(node: WorldNode) {

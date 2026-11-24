@@ -73,13 +73,13 @@ export const RESEARCH_DEFS: Record<string, ResearchDef> = {
   },
   forge: {
     id: "forge",
-    name: "Town Forge",
+    name: "Furnace",
     category: "misc",
     note: "Smelts copper + tin into bronze bars.",
   },
   bench: {
     id: "bench",
-    name: "Crafting Bench",
+    name: "Crafting Station",
     category: "misc",
     note: "Turn a bronze bar into a crafted lure.",
   },

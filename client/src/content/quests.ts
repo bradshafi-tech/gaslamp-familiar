@@ -41,7 +41,7 @@ export const QUESTS: Record<string, QuestDef> = {
     summary: "A Catcher-trained delve into the magical outskirts.",
     steps: [
       "Train your Catcher pet to level 3 (assist in combat or catch tasks).",
-      "Catch a Cobble Crow in town with a Catch Net.",
+      "Catch a Cobble Crow (wild pets return later — crow can also count if already owned).",
       "Defeat the Mist Shade on the outskirts road.",
     ],
     // Pet level gates the Understreet zone + wild catches, not accepting the quest.
