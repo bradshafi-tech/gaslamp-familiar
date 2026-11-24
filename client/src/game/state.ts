@@ -1,25 +1,33 @@
 import {
+  INV_SIZE,
   addSkillXp,
   defaultSave,
+  makeInstanceId,
+  normalizeSave,
+  type AttackStyle,
   type CharacterSave,
   type InventorySlot,
   type PetInstance,
   type QuestProgress,
+  type ResearchEntry,
   type SkillId,
 } from "@shared/index";
 import { ITEMS } from "../content/items";
 import { PET_SPECIES, randomPetInstanceId } from "../content/pets";
 import { QUESTS } from "../content/quests";
+import type { ResearchDef } from "../content/research";
 
 export type LogFn = (msg: string) => void;
+export type LevelUpFn = (skill: SkillId, level: number) => void;
 
 export class GameState {
   save: CharacterSave;
   log: LogFn;
+  onLevelUp: LevelUpFn | null = null;
   dirty = false;
 
   constructor(save: CharacterSave | null, log: LogFn) {
-    this.save = save ?? defaultSave();
+    this.save = normalizeSave(save ?? defaultSave());
     this.log = log;
   }
 
@@ -27,25 +35,65 @@ export class GameState {
     this.dirty = true;
   }
 
-  invQty(itemId: string): number {
-    return this.save.inventory.find((s) => s.itemId === itemId)?.qty ?? 0;
+  ensureInv(): InventorySlot[] {
+    if (!this.save.inventory || this.save.inventory.length !== INV_SIZE) {
+      this.save = normalizeSave(this.save);
+    }
+    return this.save.inventory;
   }
 
-  addItem(itemId: string, qty = 1) {
+  invQty(itemId: string): number {
+    return this.ensureInv().reduce((n, s) => (s && s.itemId === itemId ? n + s.qty : n), 0);
+  }
+
+  firstSlotOf(itemId: string): number {
+    return this.ensureInv().findIndex((s) => s && s.itemId === itemId);
+  }
+
+  addItem(itemId: string, qty = 1): boolean {
+    const inv = this.ensureInv();
     const stackable = ITEMS[itemId]?.stackable ?? true;
-    const slot = this.save.inventory.find((s) => s.itemId === itemId);
-    if (slot && stackable) slot.qty += qty;
-    else this.save.inventory.push({ itemId, qty });
+    if (stackable) {
+      const existing = inv.find((s) => s && s.itemId === itemId);
+      if (existing) {
+        existing.qty += qty;
+        this.mark();
+        return true;
+      }
+    }
+    const empty = inv.findIndex((s) => s === null);
+    if (empty < 0) {
+      this.log("Inventory full (22 slots).");
+      return false;
+    }
+    inv[empty] = { instanceId: makeInstanceId(), itemId, qty };
     this.mark();
+    return true;
   }
 
   removeItem(itemId: string, qty = 1): boolean {
-    const slot = this.save.inventory.find((s) => s.itemId === itemId);
-    if (!slot || slot.qty < qty) return false;
-    slot.qty -= qty;
-    if (slot.qty <= 0) this.save.inventory = this.save.inventory.filter((s) => s !== slot);
+    const inv = this.ensureInv();
+    let left = qty;
+    for (let i = 0; i < inv.length && left > 0; i++) {
+      const s = inv[i];
+      if (!s || s.itemId !== itemId) continue;
+      const take = Math.min(s.qty, left);
+      s.qty -= take;
+      left -= take;
+      if (s.qty <= 0) inv[i] = null;
+    }
+    if (left > 0) return false;
     this.mark();
     return true;
+  }
+
+  dropSlot(index: number): { itemId: string; qty: number } | null {
+    const inv = this.ensureInv();
+    const s = inv[index];
+    if (!s) return null;
+    inv[index] = null;
+    this.mark();
+    return { itemId: s.itemId, qty: s.qty };
   }
 
   grantXp(skill: SkillId, amount: number) {
@@ -57,8 +105,14 @@ export class GameState {
     }
     if (leveled) {
       this.log(`${skill} level up! Now level ${newLevel}.`);
+      this.onLevelUp?.(skill, newLevel);
       this.checkSkillPets(skill, newLevel);
     }
+    this.mark();
+  }
+
+  setAttackStyle(style: AttackStyle) {
+    this.save.attackStyle = style;
     this.mark();
   }
 
@@ -119,6 +173,28 @@ export class GameState {
       this.log(`${pet.name} reached pet level ${pet.level}!`);
     }
     this.mark();
+  }
+
+  hasResearch(id: string): boolean {
+    return this.save.research.some((r) => r.id === id);
+  }
+
+  addResearch(def: ResearchDef): boolean {
+    if (this.hasResearch(def.id)) {
+      this.log(`Already in Research Book: ${def.name}.`);
+      return false;
+    }
+    const entry: ResearchEntry = {
+      id: def.id,
+      name: def.name,
+      category: def.category,
+      researchedAt: Date.now(),
+      note: def.note,
+    };
+    this.save.research.push(entry);
+    this.log(`Researched: ${def.name}.`);
+    this.mark();
+    return true;
   }
 
   quest(id: string): QuestProgress {
@@ -193,6 +269,6 @@ export class GameState {
   }
 
   inventoryList(): InventorySlot[] {
-    return this.save.inventory;
+    return this.ensureInv();
   }
 }

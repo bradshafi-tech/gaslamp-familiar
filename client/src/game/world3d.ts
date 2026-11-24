@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { TOWN_BOUNDS, WORLD_NODES, type WorldNode } from "../content/world";
 import { PET_SPECIES } from "../content/pets";
 import { makeDragonInstance, makeEggInstance } from "./dragon";
+import { loadStarterTown } from "./town";
+import { loadPetModel } from "./pet-models";
+import { KENNEY_PROPS, POLY_BUILDINGS, loadPlacedModels } from "./buildings";
 
 export type InteractTarget = {
   node: WorldNode;
@@ -30,8 +33,17 @@ export class World3D {
 
   moveTarget: THREE.Vector3 | null = null;
   speed = 6;
+  pendingInteract?: string;
   onInteract: ((node: WorldNode) => void) | null = null;
   onHover: ((label: string | null) => void) | null = null;
+  /** Right-click ground / node / active pet for context menu. */
+  onContext: ((info: {
+    clientX: number;
+    clientY: number;
+    ground: { x: number; z: number };
+    node: WorldNode | null;
+    hitPet: boolean;
+  }) => void) | null = null;
 
   constructor(canvasParent: HTMLElement) {
     this.scene = new THREE.Scene();
@@ -82,9 +94,11 @@ export class World3D {
     road.rotation.z = Math.PI / 6;
     this.scene.add(road);
 
-    this.buildBuildings();
+    this.buildBuildings(); // open-top / no roofs
     this.buildLamps();
     this.spawnNodes();
+    void this.loadTownScene();
+    void this.loadExtraBuildings();
 
     // Player
     this.player = new THREE.Group();
@@ -123,6 +137,7 @@ export class World3D {
     this.resize();
     this.renderer.domElement.addEventListener("pointerdown", (e) => this.onPointer(e));
     this.renderer.domElement.addEventListener("pointermove", (e) => this.onPointerMove(e));
+    this.renderer.domElement.addEventListener("contextmenu", (e) => this.onContextMenu(e));
   }
 
   setPlayerPosition(x: number, z: number) {
@@ -150,24 +165,15 @@ export class World3D {
       return;
     }
     this.petRoot.visible = true;
-    if (speciesId === "dwarf_dragon") {
-      this.petOrb.visible = false;
-      const hex = colorHex ?? PET_SPECIES.dwarf_dragon.color;
-      if (this.petDragon) {
-        this.petRoot.remove(this.petDragon);
-        this.petDragon = null;
-      }
-      this.petDragon = makeDragonInstance(0.32, hex);
-      this.petRoot.add(this.petDragon);
-      this.petDragon.visible = true;
-    } else {
-      if (this.petDragon) this.petDragon.visible = false;
-      this.petOrb.visible = true;
-      const color = PET_SPECIES[speciesId]?.color ?? 0xf6e27a;
-      (this.petOrb.material as THREE.MeshStandardMaterial).color.setHex(color);
-      (this.petOrb.material as THREE.MeshStandardMaterial).emissive.setHex(color);
-      (this.petOrb.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.3;
+    this.petOrb.visible = false;
+    if (this.petDragon) {
+      this.petRoot.remove(this.petDragon);
+      this.petDragon = null;
     }
+    // Prefer Poly Pizza GLB; dwarf_dragon still supports colour tint
+    this.petDragon = loadPetModel(speciesId, colorHex);
+    this.petRoot.add(this.petDragon);
+    this.petDragon.visible = true;
   }
 
   spawnGroundEgg(x: number, z: number, itemId = "amethyst_egg") {
@@ -205,22 +211,63 @@ export class World3D {
     return [...WORLD_NODES, ...this.dynamicNodes];
   }
 
+  private async loadTownScene() {
+    try {
+      const town = await loadStarterTown();
+      // Offset slightly so NPCs/nodes stay readable around the plaza
+      town.position.set(0, 0, -1);
+      this.scene.add(town);
+    } catch (e) {
+      console.warn("Starter town failed to load", e);
+    }
+  }
+
+  /** Poly Pizza houses + Kenney graveyard props (roofs stripped where applicable). */
+  private async loadExtraBuildings() {
+    try {
+      const poly = await loadPlacedModels(POLY_BUILDINGS);
+      this.scene.add(poly);
+    } catch (e) {
+      console.warn("Poly buildings failed", e);
+    }
+    try {
+      const kenney = await loadPlacedModels(KENNEY_PROPS);
+      this.scene.add(kenney);
+    } catch (e) {
+      console.warn("Kenney props failed", e);
+    }
+  }
+
+  /** Open-top buildings (no roofs) — see-inside RS rule. */
   private buildBuildings() {
     const brick = new THREE.MeshStandardMaterial({ color: 0x8b5a4a, roughness: 0.85 });
-    const roof = new THREE.MeshStandardMaterial({ color: 0x3d3a36, roughness: 0.8 });
     const places = [
-      { x: -5, z: -2, w: 4, d: 3, h: 3.2 },
-      { x: 5, z: -1, w: 3.5, d: 3, h: 2.8 },
-      { x: -1, z: 3.5, w: 5, d: 2.5, h: 2.4 },
-      { x: 7, z: 4, w: 2.8, d: 2.8, h: 2.2 },
+      { x: -5, z: -2, w: 4, d: 3, h: 2.6 },
+      { x: 5, z: -1, w: 3.5, d: 3, h: 2.4 },
+      { x: -1, z: 3.5, w: 5, d: 2.5, h: 2.2 },
+      { x: 7, z: 4, w: 2.8, d: 2.8, h: 2.0 },
     ];
     for (const p of places) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, p.d), brick);
-      b.position.set(p.x, p.h / 2, p.z);
-      const r = new THREE.Mesh(new THREE.ConeGeometry(Math.max(p.w, p.d) * 0.7, 1.2, 4), roof);
-      r.position.set(p.x, p.h + 0.5, p.z);
-      r.rotation.y = Math.PI / 4;
-      this.scene.add(b, r);
+      // Four walls + floor, open top
+      const floor = new THREE.Mesh(
+        new THREE.BoxGeometry(p.w, 0.08, p.d),
+        new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.9 })
+      );
+      floor.position.set(p.x, 0.04, p.z);
+      this.scene.add(floor);
+      const wallMat = brick;
+      const t = 0.12;
+      const walls: [number, number, number, number, number, number][] = [
+        [p.x, p.h / 2, p.z - p.d / 2, p.w, p.h, t],
+        [p.x, p.h / 2, p.z + p.d / 2, p.w, p.h, t],
+        [p.x - p.w / 2, p.h / 2, p.z, t, p.h, p.d],
+        [p.x + p.w / 2, p.h / 2, p.z, t, p.h, p.d],
+      ];
+      for (const [x, y, z, w, h, d] of walls) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+        wall.position.set(x, y, z);
+        this.scene.add(wall);
+      }
     }
   }
 
@@ -329,17 +376,8 @@ export class World3D {
         g.add(body);
       }
     } else if (node.kind === "wild_pet") {
-      const sp = PET_SPECIES[String(node.meta?.species ?? "")];
-      const orb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.28, 12, 12),
-        new THREE.MeshStandardMaterial({
-          color: sp?.color ?? 0xaaaaaa,
-          emissive: sp?.color ?? 0x333333,
-          emissiveIntensity: 0.25,
-        })
-      );
-      orb.position.y = 0.5;
-      g.add(orb);
+      const spId = String(node.meta?.species ?? "");
+      g.add(loadPetModel(spId));
     } else if (node.kind === "zone") {
       const arch = new THREE.Mesh(
         new THREE.TorusGeometry(1.1, 0.12, 8, 24, Math.PI),
@@ -409,13 +447,22 @@ export class World3D {
     this.moveTarget = point;
     this.targetMarker.position.set(point.x, 0.05, point.z);
     this.targetMarker.visible = true;
-    if (node) {
-      // walk close then interact
-      (this.moveTarget as THREE.Vector3 & { interactId?: string }).interactId = node.id;
-      (this as unknown as { pendingInteract?: string }).pendingInteract = node.id;
-    } else {
-      (this as unknown as { pendingInteract?: string }).pendingInteract = undefined;
-    }
+    this.pendingInteract = node?.id;
+  }
+
+  private onContextMenu(event: MouseEvent) {
+    event.preventDefault();
+    const point = this.pickGround(event as unknown as PointerEvent);
+    if (!point) return;
+    const node = this.nearestNode(point, 2.8);
+    const hitPet = this.petRoot.visible && Math.hypot(point.x - this.petRoot.position.x, point.z - this.petRoot.position.z) < 1.4;
+    this.onContext?.({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      ground: { x: point.x, z: point.z },
+      node,
+      hitPet,
+    });
   }
 
   private onPointerMove(event: PointerEvent) {
@@ -425,10 +472,13 @@ export class World3D {
       return;
     }
     const node = this.nearestNode(point, 1.5);
+    const hitPet = this.petRoot.visible && Math.hypot(point.x - this.petRoot.position.x, point.z - this.petRoot.position.z) < 1.2;
+    if (hitPet && this.activePetSpecies) {
+      this.onHover?.(PET_SPECIES[this.activePetSpecies]?.name ?? "Pet");
+      return;
+    }
     this.onHover?.(node ? node.label : null);
   }
-
-  pendingInteract?: string;
 
   update(dt: number) {
     if (this.moveTarget) {
@@ -481,6 +531,7 @@ export class World3D {
       this.targetMarker.scale.set(s, s, s);
     }
 
+    this.updateProgressSprites(dt);
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -497,5 +548,65 @@ export class World3D {
     const m = this.nodeMeshes.get(id);
     if (m) m.visible = true;
     this.enemyHp.set(id, hp);
+  }
+
+  walkTo(x: number, z: number, interactId?: string) {
+    this.moveTarget = new THREE.Vector3(x, 0, z);
+    this.targetMarker.position.set(x, 0.05, z);
+    this.targetMarker.visible = true;
+    this.pendingInteract = interactId;
+  }
+
+  /** Tiny spinning light for skilling progress (1–5 ticks). */
+  private progressOrbs = new Map<string, { mesh: THREE.Mesh; light: THREE.PointLight; angle: number }>();
+
+  startProgressSprite(nodeId: string) {
+    this.stopProgressSprite(nodeId);
+    const node = this.allNodes().find((n) => n.id === nodeId);
+    if (!node) return;
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffcc44, emissiveIntensity: 1.2 })
+    );
+    const light = new THREE.PointLight(0xffe088, 0.8, 4);
+    mesh.position.set(node.x + 0.6, 1.1, node.z);
+    light.position.copy(mesh.position);
+    this.scene.add(mesh, light);
+    this.progressOrbs.set(nodeId, { mesh, light, angle: 0 });
+  }
+
+  stopProgressSprite(nodeId: string) {
+    const o = this.progressOrbs.get(nodeId);
+    if (!o) return;
+    this.scene.remove(o.mesh, o.light);
+    this.progressOrbs.delete(nodeId);
+  }
+
+  private updateProgressSprites(dt: number) {
+    for (const [id, o] of this.progressOrbs) {
+      const node = this.allNodes().find((n) => n.id === id);
+      if (!node) continue;
+      o.angle += dt * 6;
+      o.mesh.position.set(node.x + Math.cos(o.angle) * 0.55, 1.0 + Math.sin(o.angle * 2) * 0.1, node.z + Math.sin(o.angle) * 0.55);
+      o.light.position.copy(o.mesh.position);
+    }
+  }
+
+  /** World position for HTML hit splats. */
+  projectToScreen(x: number, y: number, z: number): { x: number; y: number } | null {
+    const v = new THREE.Vector3(x, y, z);
+    v.project(this.camera);
+    const el = this.renderer.domElement;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: (v.x * 0.5 + 0.5) * rect.width + rect.left,
+      y: (-v.y * 0.5 + 0.5) * rect.height + rect.top,
+    };
+  }
+
+  nodeWorldPos(nodeId: string): { x: number; y: number; z: number } | null {
+    const node = this.allNodes().find((n) => n.id === nodeId);
+    if (!node) return null;
+    return { x: node.x, y: 1.2, z: node.z };
   }
 }

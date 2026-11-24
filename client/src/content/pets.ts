@@ -9,6 +9,8 @@ export type PetSpecies = {
   catchTier: number;
   color: number;
   desc: string;
+  /** Poly Pizza GLB filename under /models/pets/ */
+  modelFile?: string;
 };
 
 export const PET_SPECIES: Record<string, PetSpecies> = {
@@ -21,6 +23,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 1,
     color: 0xf6e27a,
     desc: "A warm familiar from the first town quest.",
+    modelFile: "TX8r9WBXpe.glb",
   },
   street_ferret: {
     id: "street_ferret",
@@ -31,6 +34,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 1,
     color: 0xb08d57,
     desc: "A nimble Catcher unlocked on the Catcher path.",
+    modelFile: "4LjT020LQh.glb",
   },
   sparring_imp: {
     id: "sparring_imp",
@@ -43,6 +47,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 2,
     color: 0xc45c4a,
     desc: "Appears when Attack reaches level 5.",
+    modelFile: "Mo2ky6vkf8.glb",
   },
   ember_sprite: {
     id: "ember_sprite",
@@ -55,6 +60,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 2,
     color: 0xff7a3d,
     desc: "Unlocked at Magic 5 — loves burned oak.",
+    modelFile: "UgBmRVnQ9h.glb",
   },
   river_newt: {
     id: "river_newt",
@@ -67,6 +73,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 1,
     color: 0x4f9e8a,
     desc: "Milestone pet for Fishing 5.",
+    modelFile: "37wofOCOzG.glb",
   },
   cobble_crow: {
     id: "cobble_crow",
@@ -77,6 +84,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 1,
     color: 0x3a3a42,
     desc: "Wild familiar near the town square lamps.",
+    modelFile: "kzpT6fNmM5.glb",
   },
   mist_hare: {
     id: "mist_hare",
@@ -87,6 +95,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 2,
     color: 0xc9d2e0,
     desc: "Skittish outskirts catch — needs Catcher 3+.",
+    modelFile: "1YE8U35HXsI.glb",
   },
   understreet_wisp: {
     id: "understreet_wisp",
@@ -97,6 +106,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 3,
     color: 0x8ec5ff,
     desc: "Pet-gated delve reward / hard catch.",
+    modelFile: "ypEYhCImAB.glb",
   },
   dwarf_dragon: {
     id: "dwarf_dragon",
@@ -107,6 +117,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     catchTier: 3,
     color: 0x6b3fa0,
     desc: "Shrunk dragon familiar from the Amethyst Drake egg. Eight cosmetic colour variants (random on hatch).",
+    modelFile: "LlwD0QNUPj.glb",
   },
 };
 

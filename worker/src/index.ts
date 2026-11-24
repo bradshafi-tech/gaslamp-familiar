@@ -1,5 +1,5 @@
 import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
-import { defaultSave, type CharacterSave } from "../../shared/src/index";
+import { defaultSave, normalizeSave, type CharacterSave } from "../../shared/src/index";
 import { hashPassword, randomId, verifyPassword } from "./crypto";
 import { ensureSchema } from "./schema";
 import { ensureSeedAccount } from "./seed";
@@ -186,7 +186,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
         .run();
       return json({ save });
     }
-    return json({ save: JSON.parse(row.save_json) as CharacterSave });
+    return json({ save: normalizeSave(JSON.parse(row.save_json) as CharacterSave) });
   }
 
   if (path === "/api/character" && request.method === "PUT") {
@@ -194,10 +194,11 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     if (!user) return bad("unauthorized", 401);
     const body = await readJson<{ save?: CharacterSave }>(request);
     if (!body?.save || typeof body.save !== "object") return bad("save required");
+    const save = normalizeSave(body.save);
     await env.DB.prepare(
       "INSERT INTO characters (user_id, save_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET save_json = excluded.save_json, updated_at = excluded.updated_at"
     )
-      .bind(user.id, JSON.stringify(body.save), Date.now())
+      .bind(user.id, JSON.stringify(save), Date.now())
       .run();
     return json({ ok: true });
   }

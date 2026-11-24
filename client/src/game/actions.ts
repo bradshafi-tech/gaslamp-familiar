@@ -4,27 +4,21 @@ import { PET_SPECIES } from "../content/pets";
 import { randomDwarfDragonColor } from "../content/dragon-colors";
 import type { GameState } from "./state";
 import type { World3D } from "./world3d";
+import type { GameSession } from "./session";
 
-export function interact(node: WorldNode, state: GameState, world: World3D) {
-  const now = performance.now();
-  const cd = world.nodeCooldown.get(node.id) ?? 0;
-  if (cd > now) {
-    state.log("Still busy…");
-    return;
-  }
-
+export function interact(node: WorldNode, state: GameState, world: World3D, session?: GameSession) {
   switch (node.kind) {
     case "npc":
       talkNpc(node, state);
       break;
     case "tree":
-      chopTree(node, state, world);
+      chopTree(node, state, world, session);
       break;
     case "rock":
-      mineRock(node, state, world);
+      mineRock(node, state, world, session);
       break;
     case "fish":
-      fish(node, state, world);
+      fish(node, state, world, session);
       break;
     case "forge":
       smelt(state);
@@ -33,7 +27,8 @@ export function interact(node: WorldNode, state: GameState, world: World3D) {
       craft(state);
       break;
     case "enemy":
-      fight(node, state, world);
+      if (session) session.startCombat(node);
+      else fightLegacy(node, state, world);
       break;
     case "wild_pet":
       catchWild(node, state, world);
@@ -86,7 +81,6 @@ function talkNpc(node: WorldNode, state: GameState) {
       state.log("Holt: Smelt at the forge, craft at the bench, then return.");
       return;
     }
-    // Quest 3 hook
     const q3 = state.quest("q3_outskirts_delve");
     if (q3.status === "available" && state.save.pets.some((p) => p.traits.includes("catcher"))) {
       state.startQuest("q3_outskirts_delve");
@@ -101,25 +95,23 @@ function talkNpc(node: WorldNode, state: GameState) {
   }
 }
 
-function chopTree(node: WorldNode, state: GameState, world: World3D) {
+function chopTree(node: WorldNode, state: GameState, world: World3D, session?: GameSession) {
   if (state.invQty("bronze_axe") < 1 && state.save.equipment.tool !== "bronze_axe") {
     state.log("You need an axe.");
     return;
   }
-  world.nodeCooldown.set(node.id, performance.now() + 1800);
-  state.addItem("oak_logs", 1);
-  state.grantXp("woodcutting", Number(node.meta?.xp ?? 25));
-  state.log("You chop oak logs.");
-  const q = state.quest("q1_lamp_familiar");
-  if (q.status === "active") state.advanceQuest("q1_lamp_familiar", 1, "chopped");
+  const finish = () => {
+    if (!state.addItem("oak_logs", 1)) return;
+    state.grantXp("woodcutting", Number(node.meta?.xp ?? 25));
+    state.log("You chop oak logs.");
+    const q = state.quest("q1_lamp_familiar");
+    if (q.status === "active") state.advanceQuest("q1_lamp_familiar", 1, "chopped");
+  };
+  if (session) session.startGather(node, "woodcutting", finish);
+  else finish();
 }
 
-/** Level-1 Magic: burn logs — trains Magic, not a separate Firemaking skill. */
 export function castSpark(state: GameState) {
-  if (state.save.skills.magic.level < 1) {
-    state.log("Magic level too low.");
-    return;
-  }
   if (!state.removeItem("oak_logs", 1)) {
     state.log("Need oak logs to burn.");
     return;
@@ -136,32 +128,38 @@ export function castSpark(state: GameState) {
   }
 }
 
-function mineRock(node: WorldNode, state: GameState, world: World3D) {
+function mineRock(node: WorldNode, state: GameState, _world: World3D, session?: GameSession) {
   if (state.invQty("bronze_pickaxe") < 1) {
     state.log("You need a pickaxe.");
     return;
   }
   const ore = String(node.meta?.ore ?? "copper_ore");
-  world.nodeCooldown.set(node.id, performance.now() + 2000);
-  state.addItem(ore, 1);
-  state.grantXp("mining", Number(node.meta?.xp ?? 22));
-  state.log(`You mine ${ITEMS[ore]?.name ?? ore}.`);
-  const q = state.quest("q2_catcher_path");
-  if (q.status === "active") {
-    if (ore === "copper_ore") state.advanceQuest("q2_catcher_path", 1, "copper");
-    if (ore === "tin_ore") state.advanceQuest("q2_catcher_path", 1, "tin");
-  }
+  const finish = () => {
+    if (!state.addItem(ore, 1)) return;
+    state.grantXp("mining", Number(node.meta?.xp ?? 22));
+    state.log(`You mine ${ITEMS[ore]?.name ?? ore}.`);
+    const q = state.quest("q2_catcher_path");
+    if (q.status === "active") {
+      if (ore === "copper_ore") state.advanceQuest("q2_catcher_path", 1, "copper");
+      if (ore === "tin_ore") state.advanceQuest("q2_catcher_path", 1, "tin");
+    }
+  };
+  if (session) session.startGather(node, "mining", finish);
+  else finish();
 }
 
-function fish(node: WorldNode, state: GameState, world: World3D) {
+function fish(node: WorldNode, state: GameState, _world: World3D, session?: GameSession) {
   if (state.invQty("fishing_rod") < 1) {
     state.log("You need a fishing rod.");
     return;
   }
-  world.nodeCooldown.set(node.id, performance.now() + 2200);
-  state.addItem("raw_fish", 1);
-  state.grantXp("fishing", Number(node.meta?.xp ?? 20));
-  state.log("You catch a raw minnow.");
+  const finish = () => {
+    if (!state.addItem("raw_fish", 1)) return;
+    state.grantXp("fishing", Number(node.meta?.xp ?? 20));
+    state.log("You catch a raw minnow.");
+  };
+  if (session) session.startGather(node, "fishing", finish);
+  else finish();
 }
 
 function smelt(state: GameState) {
@@ -191,83 +189,11 @@ function craft(state: GameState) {
   if (q.status === "active") state.advanceQuest("q2_catcher_path", 3, "crafted");
 }
 
-function fight(node: WorldNode, state: GameState, world: World3D) {
-  const needZone = String(node.meta?.requireZone ?? "");
-  if (needZone && !state.save.unlockedZones.includes(needZone)) {
-    state.log(`The ${node.label} stirs beyond a sealed threshold (${needZone}).`);
-    return;
-  }
-  const mesh = world.nodeMeshes.get(node.id);
-  if (mesh && !mesh.visible) {
-    state.log(`${node.label} already defeated. It will return soon.`);
-    return;
-  }
-  let hp = world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
-  if (hp <= 0) {
-    state.log(`${node.label} already defeated. It will return soon.`);
-    return;
-  }
-  const atk = state.save.skills.attack.level;
-  const str = state.save.skills.strength.level;
-  const dmg = Math.max(1, Math.floor((atk + str) / 4 + Math.random() * 3));
-  hp -= dmg;
-  world.enemyHp.set(node.id, hp);
-  state.grantXp("attack", Number(node.meta?.xpAttack ?? 10));
-  state.grantXp("strength", Number(node.meta?.xpStr ?? 8));
-  state.log(`You hit ${node.label} for ${dmg}. (${Math.max(0, hp)} hp left)`);
-
-  // Enemy retaliates lightly
-  const hurt = Math.max(1, Math.floor(Math.random() * 2) + (node.meta?.boss ? 2 : 0));
-  const dead = state.takeDamage(hurt);
-  if (hurt) state.log(`${node.label} hits you for ${hurt}.`);
-  if (dead) {
-    state.save.hp = state.save.maxHp;
-    state.save.position = { x: 0, y: 0, z: 0 };
-    world.setPlayerPosition(0, 0);
-    // Reset the foe so the delve can be retried
-    world.showEnemy(node.id, Number(node.meta?.hp ?? 5));
-    state.log("You collapse and wake in the town square.");
-    state.mark();
-    return;
-  }
-
-  state.trainPet(12);
-  if (hp <= 0) {
-    state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
-    if (node.meta?.xpMagic) state.grantXp("magic", Number(node.meta.xpMagic));
-    state.addItem("iron_scrap", 1);
-    state.log(`${node.label} defeated!`);
-    world.hideEnemy(node.id);
-    setTimeout(() => {
-      world.showEnemy(node.id, Number(node.meta?.hp ?? 5));
-    }, 20000);
-    const q3 = state.quest("q3_outskirts_delve");
-    if (node.id === "shade" && node.meta?.boss && q3.status === "active") {
-      state.advanceQuest("q3_outskirts_delve", 3, "shade");
-      const pet = state.activePet();
-      const catcherReady = !!pet && pet.traits.includes("catcher") && pet.level >= 3;
-      const hasCrow = !!q3.flags.crow || state.save.pets.some((p) => p.speciesId === "cobble_crow");
-      if (catcherReady && hasCrow) {
-        state.completeQuest("q3_outskirts_delve");
-      } else {
-        state.log("Shade down — finish Catcher lv3 + Cobble Crow if still missing.");
-      }
-    }
-    // Amethyst Drake boss → egg appears on the ground at the kill spot
-    if (node.meta?.rewardEgg) {
-      const q4 = state.quest("q4_amethyst_drake");
-      if (q4.status === "available") {
-        q4.status = "active";
-        q4.step = 1;
-      }
-      if (q4.status === "active") state.advanceQuest("q4_amethyst_drake", 2, "drake_slain");
-      // Drop on the ground at the kill spot (slight offset so it isn't under the corpse hitbox)
-      world.spawnGroundEgg(node.x + 1.1, node.z + 0.4, String(node.meta.rewardEgg));
-      state.log("The Drake falls — an Amethyst Dragon Egg rests on the ground. Click it.");
-    }
-  }
-  // Soft respawn after defeat already scheduled; keep combat snappy
-  world.nodeCooldown.set(node.id, performance.now() + 600);
+/** Fallback if session missing */
+function fightLegacy(node: WorldNode, state: GameState, world: World3D) {
+  state.log("Combat requires the tick session.");
+  void node;
+  void world;
 }
 
 function catchWild(node: WorldNode, state: GameState, world: World3D) {
@@ -336,17 +262,6 @@ function enterZone(node: WorldNode, state: GameState) {
   state.log(`You pass the ${zone} threshold.`);
 }
 
-export function eatFood(state: GameState, itemId: string) {
-  const def = ITEMS[itemId];
-  if (!def?.heal) {
-    state.log("That is not food.");
-    return;
-  }
-  if (!state.removeItem(itemId, 1)) return;
-  state.heal(def.heal);
-  state.log(`You eat ${def.name} (+${def.heal} hp).`);
-}
-
 function clickGroundEgg(node: WorldNode, state: GameState, world: World3D) {
   if (state.save.pets.some((p) => p.speciesId === "dwarf_dragon")) {
     state.log("You already have a Dwarf Dragon. The egg fades.");
@@ -370,8 +285,40 @@ function clickGroundEgg(node: WorldNode, state: GameState, world: World3D) {
   q4.flags.hatched = true;
   state.save.gold += 75;
   state.mark();
-
-  // Exact on-screen quest complete message
   state.log("Quest complete — you receive Dwarf Dragon.");
   state.log(`Colour: ${variant.name} (cosmetic only).`);
+}
+
+export function eatFood(state: GameState, itemId: string) {
+  const def = ITEMS[itemId];
+  if (!def?.heal) {
+    state.log("That is not food.");
+    return;
+  }
+  if (!state.removeItem(itemId, 1)) return;
+  state.heal(def.heal);
+  state.log(`You eat ${def.name} (+${def.heal} hp).`);
+}
+
+/** Wire boss death rewards when using tick combat. */
+export function handleEnemyDefeated(node: WorldNode, state: GameState, world: World3D) {
+  const q3 = state.quest("q3_outskirts_delve");
+  if (node.id === "shade" && q3.status === "active") {
+    state.advanceQuest("q3_outskirts_delve", 3, "shade");
+    const pet = state.activePet();
+    const catcherReady = !!pet && pet.traits.includes("catcher") && pet.level >= 3;
+    const hasCrow = !!q3.flags.crow || state.save.pets.some((p) => p.speciesId === "cobble_crow");
+    if (catcherReady && hasCrow) state.completeQuest("q3_outskirts_delve");
+    else state.log("Shade down — finish Catcher lv3 + Cobble Crow if still missing.");
+  }
+  if (node.meta?.rewardEgg) {
+    const q4 = state.quest("q4_amethyst_drake");
+    if (q4.status === "available") {
+      q4.status = "active";
+      q4.step = 1;
+    }
+    if (q4.status === "active") state.advanceQuest("q4_amethyst_drake", 2, "drake_slain");
+    world.spawnGroundEgg(node.x + 1.1, node.z + 0.4, String(node.meta.rewardEgg));
+    state.log("The Drake falls — an Amethyst Dragon Egg rests on the ground. Click it.");
+  }
 }
