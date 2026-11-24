@@ -79,7 +79,7 @@ export class World3D {
 
     this.spawnNodes();
 
-    // Player — Poly Pizza Character Base (https://poly.pizza/m/qbDLeTtb8K)
+    // Player — Poly Pizza Animated Character Base (https://poly.pizza/m/AZzoJo1FBm)
     this.player = createPlayerModel();
     this.scene.add(this.player);
 
@@ -452,6 +452,9 @@ export class World3D {
   }
 
   update(dt: number) {
+    const tickPlayer = this.player.userData.updatePlayer as ((d: number) => void) | undefined;
+    tickPlayer?.(dt);
+
     if (this.moveTarget) {
       const pos = this.player.position;
       const dx = this.moveTarget.x - pos.x;

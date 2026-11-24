@@ -1,15 +1,18 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 
-/** Poly Pizza Character Base — https://poly.pizza/m/qbDLeTtb8K */
-export const PLAYER_MODEL_URL = "/models/player/qbDLeTtb8K.glb";
-/** Fit low-poly base into ~1.7 unit tall capsule silhouette. */
-export const PLAYER_MODEL_SCALE = 1.05;
+/** Poly Pizza Animated Character Base — https://poly.pizza/m/AZzoJo1FBm */
+export const PLAYER_MODEL_URL = "/models/player/AZzoJo1FBm.glb";
+/** Fit Mixamo-scale base to world units. */
+export const PLAYER_MODEL_SCALE = 1.0;
 
-let cached: THREE.Object3D | null = null;
-let loading: Promise<THREE.Object3D | null> | null = null;
+type CachedGltf = { scene: THREE.Object3D; animations: THREE.AnimationClip[] };
 
-function loadSource(): Promise<THREE.Object3D | null> {
+let cached: CachedGltf | null = null;
+let loading: Promise<CachedGltf | null> | null = null;
+
+function loadSource(): Promise<CachedGltf | null> {
   if (cached) return Promise.resolve(cached);
   if (loading) return loading;
   loading = new Promise((resolve) => {
@@ -17,7 +20,7 @@ function loadSource(): Promise<THREE.Object3D | null> {
     loader.load(
       PLAYER_MODEL_URL,
       (gltf) => {
-        cached = gltf.scene;
+        cached = { scene: gltf.scene, animations: gltf.animations.slice() };
         resolve(cached);
       },
       undefined,
@@ -43,26 +46,33 @@ function makeCapsuleFallback(): THREE.Group {
   return g;
 }
 
-/** Player root with Poly Pizza Character Base (capsule fallback until GLB loads). */
+/** Player root with Poly Pizza Animated Character Base (capsule fallback until GLB loads). */
 export function createPlayerModel(): THREE.Group {
   const root = new THREE.Group();
   root.name = "Player";
   const fallback = makeCapsuleFallback();
   fallback.name = "PlayerFallback";
   root.add(fallback);
+  root.userData.updatePlayer = (_dt: number) => {};
 
-  void loadSource().then((src) => {
-    if (!src) return;
+  void loadSource().then((pack) => {
+    if (!pack) return;
     root.clear();
-    const model = src.clone(true);
+    // Skinned Mixamo mesh — clone skeleton correctly
+    const model = SkeletonUtils.clone(pack.scene) as THREE.Object3D;
     model.scale.setScalar(PLAYER_MODEL_SCALE);
     model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model);
-    // Sit on ground plane
     model.position.y -= box.min.y;
-    // Face camera-forward convention used by walk rotation
     model.rotation.y = Math.PI;
     root.add(model);
+
+    if (pack.animations.length) {
+      const mixer = new THREE.AnimationMixer(model);
+      const action = mixer.clipAction(pack.animations[0]!);
+      action.play();
+      root.userData.updatePlayer = (dt: number) => mixer.update(dt);
+    }
   });
 
   return root;
