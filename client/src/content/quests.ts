@@ -17,8 +17,8 @@ export const QUESTS: Record<string, QuestDef> = {
     summary: "Help the lampwright and earn your first familiar.",
     steps: [
       "Speak to Mabel the Lampwright in the town square.",
-      "Chop an oak tree for logs, then burn one with Magic (Spark).",
-      "Return the Enchanted Wick feel to Mabel — claim your Lamp Moth.",
+      "Chop a tree for a tree log, then burn it with Magic (Spark) for ash.",
+      "Return to Mabel — claim your Light Orb.",
     ],
     rewardPet: "lamp_moth",
     rewardGold: 15,

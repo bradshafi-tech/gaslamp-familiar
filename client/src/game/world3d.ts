@@ -310,16 +310,17 @@ export class World3D {
   private makeNodeMesh(node: WorldNode): THREE.Object3D {
     const g = new THREE.Group();
     if (node.kind === "tree") {
+      const isOak = String(node.meta?.tree ?? "") === "oak";
       const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.28, 1.4, 8),
-        new THREE.MeshStandardMaterial({ color: 0x5a3a22 })
+        new THREE.CylinderGeometry(isOak ? 0.28 : 0.2, isOak ? 0.36 : 0.28, isOak ? 1.8 : 1.4, 8),
+        new THREE.MeshStandardMaterial({ color: isOak ? 0x4a3220 : 0x5a3a22 })
       );
-      trunk.position.y = 0.7;
+      trunk.position.y = isOak ? 0.9 : 0.7;
       const leaves = new THREE.Mesh(
-        new THREE.SphereGeometry(0.9, 10, 10),
-        new THREE.MeshStandardMaterial({ color: 0x3f6b3a })
+        new THREE.SphereGeometry(isOak ? 1.15 : 0.9, 10, 10),
+        new THREE.MeshStandardMaterial({ color: isOak ? 0x2f5a32 : 0x3f6b3a })
       );
-      leaves.position.y = 1.8;
+      leaves.position.y = isOak ? 2.2 : 1.8;
       g.add(trunk, leaves);
     } else if (node.kind === "rock") {
       g.add(

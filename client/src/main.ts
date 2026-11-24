@@ -2,6 +2,9 @@ import "./styles.css";
 import {
   ATTACK_STYLES,
   INV_SIZE,
+  LIGHT_ORB_ASHES_TO_L2,
+  LIGHT_ORB_OAK_TO_L30,
+  LIGHT_ORB_SPECIES,
   SKILL_DESCRIPTIONS,
   SKILL_IDS,
   SKILL_LABELS,
@@ -73,7 +76,7 @@ app.innerHTML = `
         <div class="panel">
           <h2>Actions</h2>
           <div class="toolbar">
-            <button type="button" class="primary" id="btn-spark">Cast Spark</button>
+            <button type="button" class="primary" id="btn-spark">Cast Spark (burn logs)</button>
             <button type="button" id="btn-eat">Eat Bread</button>
             <button type="button" id="btn-nearest">Interact nearest</button>
           </div>
@@ -266,8 +269,12 @@ function renderInvSlotMenu(index: number, clientX: number, clientY: number) {
   if (!state || !session) return;
   const slot = state.inventoryList()[index];
   if (!slot) return;
+  let useLabel = `Use ${itemName(slot.itemId)}`;
+  if (slot.itemId === "ashes") useLabel = "Feed Light Orb (ashes)";
+  else if (slot.itemId === "oak_logs") useLabel = "Feed / burn Oak Log";
+  else if (slot.itemId === "tree_logs") useLabel = "Burn Tree Log → ash";
   showCtx(clientX, clientY, [
-    { label: `Use ${itemName(slot.itemId)}`, action: () => session!.useItem(slot.itemId) },
+    { label: useLabel, action: () => session!.useItem(slot.itemId) },
     { label: "Examine", action: () => session!.examineItem(slot.itemId) },
     { label: "Research", action: () => session!.researchItem(slot.itemId) },
     { label: "Drop", action: () => session!.dropItemSlot(index) },
@@ -324,7 +331,7 @@ function renderHud() {
 
   const pets = document.getElementById("pet-panel")!;
   if (!s.pets.length) {
-    pets.innerHTML = `<h2>Pets</h2><p class="muted">None yet — finish the lampwright quest.</p>`;
+    pets.innerHTML = `<h2>Pets</h2><p class="muted">None yet — finish the lampwright quest for a Light Orb.</p>`;
   } else {
     pets.innerHTML =
       `<h2>Pets</h2>` +
@@ -332,13 +339,26 @@ function renderHud() {
         .map((p) => {
           const sp = PET_SPECIES[p.speciesId];
           const colorNote = p.colorName ? ` · ${p.colorName}` : "";
+          let progress = "";
+          if (p.speciesId === LIGHT_ORB_SPECIES) {
+            if (p.level < 2) {
+              const ash = p.ashesFed ?? 0;
+              progress = `<div class="muted">Ashes ${ash}/${LIGHT_ORB_ASHES_TO_L2} → evolve lv2</div>`;
+            } else if (p.level < 30) {
+              const oak = p.oakFed ?? 0;
+              progress = `<div class="muted">Oak ${oak}/${LIGHT_ORB_OAK_TO_L30} → lv ${p.level}/30</div>`;
+            } else {
+              progress = `<div class="muted">Fully grown (ash → oak loop)</div>`;
+            }
+          }
           return `<div class="pet-item ${p.active ? "active" : ""}" data-pet="${p.id}" data-species="${p.speciesId}">
             <strong>${p.name}</strong> · lv ${p.level}${colorNote}
             <div class="muted">${(sp?.traits ?? p.traits).join(", ")}</div>
+            ${progress}
           </div>`;
         })
         .join("") +
-      `<p class="muted" style="margin-top:6px;font-size:0.75rem">Click to set active · Right-click Research</p>`;
+      `<p class="muted" style="margin-top:6px;font-size:0.75rem">Click to set active · Right-click Research · Use ashes/oak on Light Orb</p>`;
     pets.querySelectorAll("[data-pet]").forEach((el) => {
       el.addEventListener("click", () => {
         state!.setActivePet((el as HTMLElement).dataset.pet!);

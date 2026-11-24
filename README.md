@@ -45,6 +45,6 @@ npm run deploy
 ## Level-1 loop
 
 1. Log in → appear in Brindlewick square.
-2. Talk to **Mabel** → chop oak → **Cast Spark** (burn logs / Magic XP) → return for **Lamp Moth**.
+2. Talk to **Mabel** → chop a **tree** → **Cast Spark** (burn logs → ashes / Magic XP) → return for **Light Orb** (feed 1000 ashes → lv2, then 250 oak logs → lv30).
 3. Talk to **Holt** → mine copper/tin → smelt → craft lure → unlock **Street Ferret** (Catcher).
 4. Train Catcher via combat, catch **Cobble Crow**, defeat **Mist Shade** on the outskirts road.

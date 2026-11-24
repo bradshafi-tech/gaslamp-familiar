@@ -11,11 +11,17 @@ export type ResearchDef = {
 
 /** Static catalogue of examinable / researchable subjects. */
 export const RESEARCH_DEFS: Record<string, ResearchDef> = {
+  tree_common: {
+    id: "tree_common",
+    name: "Tree",
+    category: "tree",
+    note: "Common town tree. Yields tree logs. Burn for 1 ash.",
+  },
   tree_oak: {
     id: "tree_oak",
     name: "Oak Tree",
     category: "tree",
-    note: "Common Victorian oak. Yields logs; chop speed rises with Woodcutting.",
+    note: "Requires Woodcutting 20. Yields oak logs — burn for 2 ashes, or feed a level 2+ Light Orb.",
   },
   fish_pond: {
     id: "fish_pond",
@@ -89,7 +95,9 @@ for (const sp of Object.values(PET_SPECIES)) {
 }
 
 export function researchIdForNode(node: WorldNode): string | null {
-  if (node.kind === "tree") return "tree_oak";
+  if (node.kind === "tree") {
+    return String(node.meta?.tree ?? "") === "oak" ? "tree_oak" : "tree_common";
+  }
   if (node.kind === "fish") return "fish_pond";
   if (node.kind === "rock") {
     const ore = String(node.meta?.ore ?? "");

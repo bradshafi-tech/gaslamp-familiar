@@ -1,3 +1,4 @@
+import { OAK_WOODCUTTING_LEVEL } from "@shared/index";
 import type { WorldNode } from "../content/world";
 import { ITEMS } from "../content/items";
 import { PET_SPECIES } from "../content/pets";
@@ -48,16 +49,16 @@ function talkNpc(node: WorldNode, state: GameState) {
     const q = state.quest("q1_lamp_familiar");
     if (q.status === "available") {
       state.startQuest("q1_lamp_familiar");
-      state.log("Mabel: Fetch oak-smoke for an enchanted wick, dear.");
+      state.log("Mabel: Fetch tree-smoke for an enchanted wick, dear.");
       return;
     }
     if (q.status === "active") {
       if (q.step >= 2 || q.flags.burned) {
         if (!state.invQty("lamp_wick")) state.addItem("lamp_wick", 1);
         state.completeQuest("q1_lamp_familiar");
-        state.log("Mabel: A Lamp Moth for you — treat it kindly.");
+        state.log("Mabel: A Light Orb for you — feed it ashes to grow.");
       } else {
-        state.log("Mabel: Chop oak, then cast Spark on a log.");
+        state.log("Mabel: Chop a tree, then cast Spark to burn a log into ash.");
       }
       return;
     }
@@ -100,24 +101,47 @@ function chopTree(node: WorldNode, state: GameState, world: World3D, session?: G
     state.log("You need an axe.");
     return;
   }
+  const treeKind = String(node.meta?.tree ?? "tree");
+  const logId = String(node.meta?.log ?? (treeKind === "oak" ? "oak_logs" : "tree_logs"));
+  const needWc = Number(node.meta?.requiredWoodcutting ?? (treeKind === "oak" ? OAK_WOODCUTTING_LEVEL : 0));
+  if (needWc > 0 && state.save.skills.woodcutting.level < needWc) {
+    state.log(`You need Woodcutting ${needWc} to chop ${node.label}.`);
+    return;
+  }
   const finish = () => {
-    if (!state.addItem("oak_logs", 1)) return;
+    if (!state.addItem(logId, 1)) return;
     state.grantXp("woodcutting", Number(node.meta?.xp ?? 25));
-    state.log("You chop oak logs.");
+    const label = ITEMS[logId]?.name ?? logId;
+    state.log(`You chop a ${label}.`);
     const q = state.quest("q1_lamp_familiar");
-    if (q.status === "active") state.advanceQuest("q1_lamp_familiar", 1, "chopped");
+    if (q.status === "active" && logId === "tree_logs") state.advanceQuest("q1_lamp_familiar", 1, "chopped");
   };
   if (session) session.startGather(node, "woodcutting", finish);
   else finish();
+  void world;
 }
 
+/** Magic burn: tree log → 1 ash, oak log → 2 ash. Prefers tree logs, then oak. */
 export function castSpark(state: GameState) {
-  if (!state.removeItem("oak_logs", 1)) {
-    state.log("Need oak logs to burn.");
+  let ashYield = 0;
+  let burned: string | null = null;
+  if (state.invQty("tree_logs") > 0 && state.removeItem("tree_logs", 1)) {
+    ashYield = 1;
+    burned = "tree_logs";
+  } else if (state.invQty("oak_logs") > 0 && state.removeItem("oak_logs", 1)) {
+    ashYield = 2;
+    burned = "oak_logs";
+  } else {
+    state.log("Need a tree log or oak log to burn.");
     return;
   }
-  state.grantXp("magic", 30);
-  state.log("You cast Spark and burn the logs. Magic XP gained.");
+  if (!state.addItem("ashes", ashYield)) {
+    // Refund if inventory full
+    state.addItem(burned, 1);
+    return;
+  }
+  state.grantXp("magic", burned === "oak_logs" ? 45 : 30);
+  state.log(`You cast Spark — ${ITEMS[burned]?.name} becomes ${ashYield} ash.`);
   const q = state.quest("q1_lamp_familiar");
   if (q.status === "active") {
     state.advanceQuest("q1_lamp_familiar", 2, "burned");

@@ -16,13 +16,13 @@ export type PetSpecies = {
 export const PET_SPECIES: Record<string, PetSpecies> = {
   lamp_moth: {
     id: "lamp_moth",
-    name: "Lamp Moth",
+    name: "Light Orb",
     rarity: "common",
-    traits: ["companion"],
+    traits: ["companion", "light"],
     unlock: "quest",
     catchTier: 1,
     color: 0xf6e27a,
-    desc: "A warm familiar from the first town quest.",
+    desc: "First familiar. Feed 1000 ashes to evolve to level 2, then oak logs (250) to reach level 30.",
     modelFile: "TX8r9WBXpe.glb",
   },
   street_ferret: {
@@ -59,7 +59,7 @@ export const PET_SPECIES: Record<string, PetSpecies> = {
     skillLevel: 5,
     catchTier: 2,
     color: 0xff7a3d,
-    desc: "Unlocked at Magic 5 — loves burned oak.",
+    desc: "Unlocked at Magic 5 — drawn to ash and spark.",
     modelFile: "UgBmRVnQ9h.glb",
   },
   river_newt: {

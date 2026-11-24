@@ -1,7 +1,11 @@
 import {
   INV_SIZE,
+  LIGHT_ORB_ASHES_TO_L2,
+  LIGHT_ORB_OAK_TO_L30,
+  LIGHT_ORB_SPECIES,
   addSkillXp,
   defaultSave,
+  lightOrbLevelFromOakFed,
   makeInstanceId,
   normalizeSave,
   type AttackStyle,
@@ -165,6 +169,8 @@ export class GameState {
   trainPet(amount: number) {
     const pet = this.activePet();
     if (!pet) return;
+    // Light Orb advances only via ashes / oak logs.
+    if (pet.speciesId === LIGHT_ORB_SPECIES) return;
     pet.xp += amount;
     const need = pet.level * 40;
     if (pet.xp >= need) {
@@ -173,6 +179,71 @@ export class GameState {
       this.log(`${pet.name} reached pet level ${pet.level}!`);
     }
     this.mark();
+  }
+
+  lightOrb(): PetInstance | undefined {
+    return this.save.pets.find((p) => p.speciesId === LIGHT_ORB_SPECIES);
+  }
+
+  /** Feed ashes to Light Orb (level 1 → 2 needs 1000). Returns ashes consumed. */
+  feedLightOrbAshes(qty: number): number {
+    const pet = this.lightOrb();
+    if (!pet) {
+      this.log("You need a Light Orb to feed ashes.");
+      return 0;
+    }
+    if (pet.level >= 2) {
+      this.log("Light Orb no longer eats ashes — feed oak logs instead.");
+      return 0;
+    }
+    pet.ashesFed = pet.ashesFed ?? 0;
+    const need = LIGHT_ORB_ASHES_TO_L2 - pet.ashesFed;
+    if (need <= 0) {
+      pet.level = Math.max(pet.level, 2);
+      this.mark();
+      return 0;
+    }
+    const take = Math.min(qty, need);
+    if (take <= 0) return 0;
+    pet.ashesFed += take;
+    this.log(`Light Orb absorbs ${take} ash (${pet.ashesFed}/${LIGHT_ORB_ASHES_TO_L2}).`);
+    if (pet.ashesFed >= LIGHT_ORB_ASHES_TO_L2) {
+      pet.level = 2;
+      pet.oakFed = pet.oakFed ?? 0;
+      this.log("Light Orb evolves to level 2! Feed oak logs to train further (250 to level 30).");
+    }
+    this.mark();
+    return take;
+  }
+
+  /** Feed oak logs to Light Orb (level 2 → 30 needs 250 oak). Returns logs consumed. */
+  feedLightOrbOak(qty: number): number {
+    const pet = this.lightOrb();
+    if (!pet) {
+      this.log("You need a Light Orb to feed oak logs.");
+      return 0;
+    }
+    if (pet.level < 2) {
+      const fed = pet.ashesFed ?? 0;
+      this.log(`Light Orb must evolve first — feed ashes (${fed}/${LIGHT_ORB_ASHES_TO_L2}).`);
+      return 0;
+    }
+    if (pet.level >= 30) {
+      this.log("Light Orb is fully grown (level 30).");
+      return 0;
+    }
+    pet.oakFed = pet.oakFed ?? 0;
+    const need = LIGHT_ORB_OAK_TO_L30 - pet.oakFed;
+    const take = Math.min(qty, need);
+    if (take <= 0) return 0;
+    pet.oakFed += take;
+    pet.level = lightOrbLevelFromOakFed(pet.oakFed);
+    this.log(`Light Orb eats ${take} oak log${take > 1 ? "s" : ""} (${pet.oakFed}/${LIGHT_ORB_OAK_TO_L30}) → level ${pet.level}.`);
+    if (pet.level >= 30) {
+      this.log("Light Orb reaches level 30 — the ash-and-oak loop is complete.");
+    }
+    this.mark();
+    return take;
   }
 
   hasResearch(id: string): boolean {

@@ -41,12 +41,12 @@ export const SKILL_DESCRIPTIONS: Record<SkillId, string> = {
   strength: "Increases melee damage.",
   defence: "Reduces damage taken and improves block chance.",
   hitpoints: "Your maximum health.",
-  magic: "Casts spells (Spark burns logs). Improves magic hits.",
+  magic: "Burn tree/oak logs to ashes (Spark). Improves magic hits.",
   archery: "Ranged combat accuracy and damage.",
   fishing: "Catch fish at ponds and rivers.",
   crafting: "Make tools, lures, and quest items.",
   mining: "Mine ore and smelt bars. Higher levels gather faster.",
-  woodcutting: "Chop trees for logs. Higher levels chop faster.",
+  woodcutting: "Chop trees for logs. Oak unlocks at level 20. Higher levels chop faster.",
 };
 
 export type SkillsState = Record<SkillId, { level: number; xp: number }>;
@@ -79,7 +79,24 @@ export type PetInstance = {
   active: boolean;
   color?: number;
   colorName?: string;
+  /** Light Orb (lamp_moth): ashes fed toward level 2 (need 1000). */
+  ashesFed?: number;
+  /** Light Orb: oak logs fed toward level 30 (need 250 after level 2). */
+  oakFed?: number;
 };
+
+/** Light Orb evolution / training costs. */
+export const LIGHT_ORB_ASHES_TO_L2 = 1000;
+export const LIGHT_ORB_OAK_TO_L30 = 250;
+export const LIGHT_ORB_SPECIES = "lamp_moth";
+export const OAK_WOODCUTTING_LEVEL = 20;
+
+/** Map oak-fed count (0–250) onto pet levels 2–30. */
+export function lightOrbLevelFromOakFed(oakFed: number): number {
+  const fed = Math.max(0, Math.min(LIGHT_ORB_OAK_TO_L30, oakFed));
+  if (fed <= 0) return 2;
+  return Math.min(30, 2 + Math.floor((fed * 28) / LIGHT_ORB_OAK_TO_L30));
+}
 
 export type QuestProgress = {
   questId: string;
@@ -164,11 +181,11 @@ export function defaultSave(): CharacterSave {
     maxHp: 10,
     gold: 25,
     unlockedZones: ["town", "outskirts"],
-    version: 2,
+    version: 3,
   };
 }
 
-/** Migrate older saves (v1 sparse inventory, missing defence/research/style). */
+/** Migrate older saves (v1 sparse inventory, missing defence/research/style, oak→tree logs). */
 export function normalizeSave(raw: CharacterSave): CharacterSave {
   const base = defaultSave();
   const skills = { ...base.skills, ...(raw.skills || {}) } as SkillsState;
@@ -185,13 +202,25 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     if (!entry || slot >= INV_SIZE) continue;
     const any = entry as { itemId?: string; qty?: number; instanceId?: string };
     if (!any.itemId) continue;
+    // Pre–Light Orb loop: starter "oak_logs" became tree_logs; real oak is WC 20+.
+    const itemId = any.itemId === "oak_logs" && (raw.version ?? 1) < 3 ? "tree_logs" : any.itemId;
     inventory[slot] = {
       instanceId: any.instanceId || makeInstanceId(),
-      itemId: any.itemId,
+      itemId,
       qty: any.qty ?? 1,
     };
     slot++;
   }
+
+  const pets = (raw.pets || []).map((p) => {
+    if (p.speciesId !== LIGHT_ORB_SPECIES) return p;
+    return {
+      ...p,
+      name: p.name?.includes("Lamp Moth") || p.name === "Lamp Moth" ? "Light Orb" : p.name || "Light Orb",
+      ashesFed: p.ashesFed ?? 0,
+      oakFed: p.oakFed ?? 0,
+    };
+  });
 
   return {
     ...base,
@@ -201,10 +230,10 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     attackStyle: raw.attackStyle || "accurate",
     research: Array.isArray(raw.research) ? raw.research : [],
     equipment: raw.equipment || base.equipment,
-    pets: raw.pets || [],
+    pets,
     quests: raw.quests?.length ? raw.quests : base.quests,
     unlockedZones: raw.unlockedZones?.length ? raw.unlockedZones : base.unlockedZones,
-    version: 2,
+    version: 3,
   };
 }
 

@@ -217,6 +217,52 @@ export class GameSession {
   useItem(itemId: string) {
     const def = ITEMS[itemId];
     if (!def) return;
+    if (itemId === "ashes") {
+      const qty = this.state.invQty("ashes");
+      const fed = this.state.feedLightOrbAshes(qty);
+      if (fed > 0) this.state.removeItem("ashes", fed);
+      this.refresh();
+      return;
+    }
+    if (itemId === "oak_logs") {
+      const orb = this.state.lightOrb();
+      if (orb && orb.level >= 2 && orb.level < 30) {
+        const qty = this.state.invQty("oak_logs");
+        const fed = this.state.feedLightOrbOak(qty);
+        if (fed > 0) this.state.removeItem("oak_logs", fed);
+        this.refresh();
+        return;
+      }
+      // Otherwise burn one oak → 2 ash
+      if (!this.state.removeItem("oak_logs", 1)) return;
+      if (!this.state.addItem("ashes", 2)) {
+        this.state.addItem("oak_logs", 1);
+        return;
+      }
+      this.state.grantXp("magic", 45);
+      this.state.log("You burn an Oak Log into 2 ashes.");
+      this.refresh();
+      return;
+    }
+    if (itemId === "tree_logs") {
+      if (!this.state.removeItem("tree_logs", 1)) return;
+      if (!this.state.addItem("ashes", 1)) {
+        this.state.addItem("tree_logs", 1);
+        return;
+      }
+      this.state.grantXp("magic", 30);
+      this.state.log("You burn a Tree Log into 1 ash.");
+      const q = this.state.quest("q1_lamp_familiar");
+      if (q.status === "active") {
+        this.state.advanceQuest("q1_lamp_familiar", 2, "burned");
+        if (!this.state.invQty("lamp_wick")) {
+          this.state.addItem("lamp_wick", 1);
+          this.state.log("The smoke leaves an Enchanted Wick.");
+        }
+      }
+      this.refresh();
+      return;
+    }
     if (def.category === "food" && def.heal) {
       if (!this.state.removeItem(itemId, 1)) return;
       this.state.heal(def.heal);
