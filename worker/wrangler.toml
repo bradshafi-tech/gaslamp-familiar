@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "victorian-adventure"
-database_id = "b67c1f0c-a4db-4ddf-9f8a-c3266144ef80"
+database_id = "03056c8f-17ca-4e1b-8ae7-5d1932deb03e"
 migrations_dir = "migrations"
 
 [assets]
