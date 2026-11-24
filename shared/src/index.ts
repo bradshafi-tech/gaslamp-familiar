@@ -37,12 +37,12 @@ export const SKILL_LABELS: Record<SkillId, string> = {
 };
 
 export const SKILL_DESCRIPTIONS: Record<SkillId, string> = {
-  attack: "Improves melee accuracy and unlocks stronger weapons.",
-  strength: "Increases melee damage.",
-  defence: "Reduces damage taken and improves block chance.",
-  hitpoints: "Your maximum health.",
-  magic: "Burn tree/oak logs to ashes (Spark). Improves magic hits.",
-  archery: "Ranged combat accuracy and damage.",
+  attack: "Melee accuracy — higher Attack lands more hits.",
+  strength: "Melee max hit — higher Strength hits harder.",
+  defence: "Avoid enemy hits — higher Defence turns blows into 0.",
+  hitpoints: "Your maximum health. Gains XP from all combat (melee, magic, archery).",
+  magic: "Spark burns logs to ash. Water spell accuracy and max hit.",
+  archery: "Ranged accuracy and max hit with a bow + arrows.",
   fishing: "Catch fish at ponds and rivers.",
   crafting: "Make tools, lures, and quest items.",
   mining: "Mine ore and smelt bars. Higher levels gather faster.",
@@ -215,11 +215,8 @@ export function makeInstanceId(): string {
 
 export function defaultSave(): CharacterSave {
   const inv = emptyInventory();
+  // Starter clothes live only in Worn (not duplicated in the bag).
   const starter: { itemId: string; qty: number }[] = [
-    { itemId: "linen_cap", qty: 1 },
-    { itemId: "work_smock", qty: 1 },
-    { itemId: "cord_trousers", qty: 1 },
-    { itemId: "brass_amulet", qty: 1 },
     { itemId: "bronze_axe", qty: 1 },
     { itemId: "bronze_pickaxe", qty: 1 },
     { itemId: "fishing_rod", qty: 1 },
@@ -266,7 +263,7 @@ export function defaultSave(): CharacterSave {
     maxHp: 10,
     gold: 25,
     unlockedZones: ["town", "outskirts"],
-    version: 7,
+    version: 8,
   };
 }
 
@@ -334,6 +331,13 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     for (const p of pets) p.following = p.id === keep.id;
   }
 
+  const equipment = normalizeEquipment(
+    raw.equipment as (EquipmentState & { tool?: string }) | undefined,
+    base.equipment
+  );
+  // Worn items live in equipment only — strip one copy from the bag if still present.
+  stripEquippedFromInventory(inventory, equipment);
+
   return {
     ...base,
     ...raw,
@@ -343,12 +347,29 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     selectedSpell:
       raw.selectedSpell === "water" ? "water" : raw.selectedSpell === null ? null : null,
     research: Array.isArray(raw.research) ? raw.research : [],
-    equipment: normalizeEquipment(raw.equipment as EquipmentState & { tool?: string } | undefined, base.equipment),
+    equipment,
     pets,
     quests: raw.quests?.length ? raw.quests : base.quests,
     unlockedZones: raw.unlockedZones?.length ? raw.unlockedZones : base.unlockedZones,
-    version: Math.max(7, raw.version ?? 1),
+    version: Math.max(8, raw.version ?? 1),
   };
+}
+
+/** Remove one of each equipped item from inventory (equip = move into Worn). */
+function stripEquippedFromInventory(inventory: InventorySlot[], equipment: EquipmentState) {
+  for (const slot of WEAR_SLOTS) {
+    const itemId = equipment[slot];
+    if (!itemId) continue;
+    let left = 1;
+    for (let i = 0; i < inventory.length && left > 0; i++) {
+      const s = inventory[i];
+      if (!s || s.itemId !== itemId) continue;
+      const take = Math.min(s.qty, left);
+      s.qty -= take;
+      left -= take;
+      if (s.qty <= 0) inventory[i] = null;
+    }
+  }
 }
 
 /** Migrate legacy `{ tool }` into the shared weapon/tool hand slot. */

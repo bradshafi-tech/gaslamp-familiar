@@ -13,10 +13,12 @@ import { ActionScheduler, TickClock } from "./tick";
 import type { GameState } from "./state";
 import type { World3D } from "./world3d";
 
+export type SplatKind = "melee" | "magic" | "ranged" | "zero" | "hurt" | "heal";
+
 export type SplatFn = (
   worldPos: { x: number; y: number; z: number },
   text: string,
-  kind: "hit" | "miss" | "heal" | "hurt"
+  kind: SplatKind
 ) => void;
 
 export class GameSession {
@@ -162,29 +164,36 @@ export class GameSession {
       return;
     }
 
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    if (wpn.allowsRanged) {
+      this.resolveRangedHit(node);
+      return;
+    }
+
     const id = node.id;
     let hp = this.world.enemyHp.get(id) ?? Number(node.meta?.hp ?? 5);
     const style = this.state.save.attackStyle;
+    // Attack = accuracy, Strength = max hit
     const atk = this.state.save.skills.attack.level;
     const str = this.state.save.skills.strength.level;
-    const wpn = equippedWeapon(this.state.save.equipment.weapon);
-    const accBonus = (wpn.attackBonus ?? 0) + (style === "accurate" ? 2 : 0);
+    const accBonus = (wpn.attackBonus ?? 0) + (style === "accurate" ? 3 : 0);
     const strBonus = (wpn.strengthBonus ?? 0) + (style === "aggressive" ? 2 : 0);
-    const accuracy = atk + accBonus + Math.random() * 8;
-    const evade = Number(node.meta?.boss ? 8 : 4) + Math.random() * 6;
+    const attackRoll = atk + accBonus + Math.random() * (atk + 8);
+    const enemyDef = Number(node.meta?.boss ? 10 : 5) + Math.random() * 6;
     const pos = this.world.nodeWorldPos(id) || { x: node.x, y: 1.2, z: node.z };
 
-    if (accuracy < evade) {
+    if (attackRoll < enemyDef) {
       this.state.log(`[Combat] Miss → ${node.label}.`);
-      this.onSplat?.(pos, "MISS", "miss");
+      this.onSplat?.(pos, "0", "zero");
     } else {
-      const maxHit = Math.max(1, Math.floor((str + strBonus) / 3) + (style === "aggressive" ? 1 : 0));
+      const maxHit = Math.max(1, Math.floor(str / 4) + strBonus + (style === "aggressive" ? 1 : 0));
       const dmg = 1 + Math.floor(Math.random() * maxHit);
       hp -= dmg;
       this.world.enemyHp.set(id, hp);
       this.state.log(`[Combat] You hit ${node.label} for ${dmg} — ${Math.max(0, hp)} hp left.`);
-      this.onSplat?.(pos, `−${dmg}`, "hit");
+      this.onSplat?.(pos, String(dmg), "melee");
       this.grantCombatXp(style, node);
+      this.grantHitpointsXp(dmg, node);
       this.state.trainPet(10);
     }
 
@@ -193,6 +202,54 @@ export class GameSession {
       return;
     }
 
+    this.queuePlayerHit();
+    this.refresh();
+  }
+
+  /** Archery — worn bow + arrows in bag. */
+  private resolveRangedHit(node: WorldNode) {
+    const id = node.id;
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    const pos = this.world.nodeWorldPos(id) || { x: node.x, y: 1.2, z: node.z };
+    const ammoId = wpn.ammoId ?? "bronze_arrows";
+
+    if (!wpn.allowsRanged) {
+      this.resolvePlayerHit();
+      return;
+    }
+    if (this.state.invQty(ammoId) < 1) {
+      this.state.log(`[Combat] No ${ITEMS[ammoId]?.name ?? "arrows"} — switch weapon or buy more.`);
+      this.queuePlayerHit();
+      this.refresh();
+      return;
+    }
+    this.state.removeItem(ammoId, 1);
+
+    const arch = this.state.save.skills.archery.level;
+    const bonus = wpn.rangedBonus ?? 0;
+    const attackRoll = arch + bonus + Math.random() * (arch + 8);
+    const enemyDef = Number(node.meta?.boss ? 10 : 5) + Math.random() * 6;
+    let hp = this.world.enemyHp.get(id) ?? Number(node.meta?.hp ?? 5);
+
+    if (attackRoll < enemyDef) {
+      this.state.log(`[Combat] Arrow misses ${node.label}.`);
+      this.onSplat?.(pos, "0", "zero");
+    } else {
+      const maxHit = Math.max(1, Math.floor(arch / 4) + bonus);
+      const dmg = 1 + Math.floor(Math.random() * maxHit);
+      hp -= dmg;
+      this.world.enemyHp.set(id, hp);
+      this.state.grantXp("archery", 10 + dmg * 2);
+      this.grantHitpointsXp(dmg, node);
+      this.state.log(`[Combat] Arrow hits ${node.label} for ${dmg} — ${Math.max(0, hp)} hp left.`);
+      this.onSplat?.(pos, String(dmg), "ranged");
+      this.state.trainPet(8);
+    }
+
+    if (hp <= 0) {
+      this.onEnemyKilled(node);
+      return;
+    }
     this.queuePlayerHit();
     this.refresh();
   }
@@ -225,21 +282,23 @@ export class GameSession {
     this.state.removeItem("water_essence", 1);
 
     const magBonus = wpn.magicBonus ?? 0;
-    const accuracy = magicLvl + magBonus + Math.random() * 8;
-    const evade = Number(node.meta?.boss ? 9 : 5) + Math.random() * 5;
+    // Magic level drives accuracy + max hit
+    const attackRoll = magicLvl + magBonus + Math.random() * (magicLvl + 8);
+    const enemyDef = Number(node.meta?.boss ? 11 : 6) + Math.random() * 5;
     let hp = this.world.enemyHp.get(id) ?? Number(node.meta?.hp ?? 5);
 
-    if (accuracy < evade) {
+    if (attackRoll < enemyDef) {
       this.state.log(`[Combat] Water misses ${node.label}.`);
-      this.onSplat?.(pos, "MISS", "miss");
+      this.onSplat?.(pos, "0", "zero");
     } else {
-      const maxHit = Math.max(1, Math.floor(magicLvl / 2) + magBonus);
+      const maxHit = Math.max(1, Math.floor(magicLvl / 3) + magBonus + 1);
       const dmg = 1 + Math.floor(Math.random() * maxHit);
       hp -= dmg;
       this.world.enemyHp.set(id, hp);
       this.state.grantXp("magic", 12 + dmg * 2);
+      this.grantHitpointsXp(dmg, node);
       this.state.log(`[Combat] Water hits ${node.label} for ${dmg} — ${Math.max(0, hp)} hp left.`);
-      this.onSplat?.(pos, `−${dmg}`, "hit");
+      this.onSplat?.(pos, String(dmg), "magic");
       this.state.trainPet(8);
     }
 
@@ -277,27 +336,31 @@ export class GameSession {
     const id = node.id;
     const style = this.state.save.attackStyle;
     const def = this.state.save.skills.defence.level;
+    const ppos = { x: this.world.player.position.x, y: 1.4, z: this.world.player.position.z };
+    // Defence = chance to avoid the hit entirely
+    const defBonus = style === "defensive" ? 4 : 0;
+    const defendRoll = def + defBonus + Math.random() * (def + 8);
+    const enemyAcc = Number(node.meta?.boss ? 12 : 6) + Math.random() * 8;
+    if (defendRoll >= enemyAcc) {
+      this.state.log(`[Combat] You avoid ${node.label}'s attack.`);
+      this.onSplat?.(ppos, "0", "zero");
+      this.queueEnemyHit();
+      this.refresh();
+      return;
+    }
     const maxHit = Math.max(1, Number(node.meta?.maxHit ?? (node.meta?.boss ? 3 : 1)));
-    const rawHurt = 1 + Math.floor(Math.random() * maxHit);
-    const mitigated = Math.max(0, rawHurt - Math.floor(def / 8) - (style === "defensive" ? 1 : 0));
-    if (mitigated > 0) {
-      const dead = this.state.takeDamage(mitigated);
-      this.state.log(`[Combat] ${node.label} hits you for ${mitigated}.`);
-      const ppos = { x: this.world.player.position.x, y: 1.4, z: this.world.player.position.z };
-      this.onSplat?.(ppos, `−${mitigated}`, "hurt");
-      if (dead) {
-        this.state.save.hp = this.state.save.maxHp;
-        this.state.save.position = { x: 0, y: 0, z: 0 };
-        this.world.setPlayerPosition(0, 0);
-        this.world.showEnemy(id, Number(node.meta?.hp ?? 5));
-        this.clearCombat("You were defeated — waking at spawn.");
-        this.refresh();
-        return;
-      }
-    } else {
-      this.state.log(`[Combat] ${node.label} glances off you.`);
-      const ppos = { x: this.world.player.position.x, y: 1.4, z: this.world.player.position.z };
-      this.onSplat?.(ppos, "0", "miss");
+    const hurt = 1 + Math.floor(Math.random() * maxHit);
+    const dead = this.state.takeDamage(hurt);
+    this.state.log(`[Combat] ${node.label} hits you for ${hurt}.`);
+    this.onSplat?.(ppos, String(hurt), "hurt");
+    if (dead) {
+      this.state.save.hp = this.state.save.maxHp;
+      this.state.save.position = { x: 0, y: 0, z: 0 };
+      this.world.setPlayerPosition(0, 0);
+      this.world.showEnemy(id, Number(node.meta?.hp ?? 5));
+      this.clearCombat("You were defeated — waking at spawn.");
+      this.refresh();
+      return;
     }
     this.queueEnemyHit();
     this.refresh();
@@ -318,6 +381,12 @@ export class GameSession {
     }
   }
 
+  /** Hitpoints XP from every successful combat hit (melee / magic / archery). */
+  private grantHitpointsXp(dmg: number, node: WorldNode) {
+    const base = Number(node.meta?.xpHp ?? 8);
+    this.state.grantXp("hitpoints", Math.max(1, Math.floor(base / 4) + dmg));
+  }
+
   stopCombat() {
     if (this.combatTarget) {
       const node = this.world.allNodes().find((n) => n.id === this.combatTarget);
@@ -335,7 +404,12 @@ export class GameSession {
     const hp = this.world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
     const wpn = equippedWeapon(this.state.save.equipment.weapon);
     const spell = this.state.save.selectedSpell;
-    const mode = spell === "water" ? "Water" : wpn.name;
+    let mode = wpn.name;
+    if (spell === "water") mode = "Water";
+    else if (wpn.allowsRanged) {
+      const ammo = this.state.invQty(wpn.ammoId ?? "bronze_arrows");
+      mode = `${wpn.name} (${ammo} arr)`;
+    }
     return `Fighting ${node.label} · ${Math.max(0, hp)} hp · ${mode} ${this.weaponTicks()}t`;
   }
 
@@ -350,6 +424,11 @@ export class GameSession {
       return;
     }
     const name = ITEMS[id]?.name ?? id;
+    // Move worn item back into the bag
+    if (!this.state.addItem(id, 1)) {
+      this.state.log(`Inventory full — can't remove ${name}.`);
+      return;
+    }
     delete this.state.save.equipment[slot];
     if (slot === "weapon") {
       this.state.log(`Unequipped ${name}. Fighting with Fist (5 ticks).`);
@@ -360,7 +439,7 @@ export class GameSession {
     this.refresh();
   }
 
-  /** Wear an item into its slot (must still be in inventory). */
+  /** Wear an item: move it from inventory into the Worn slot. */
   wearItem(itemId: string) {
     const def = ITEMS[itemId];
     const slot = def?.wearSlot ?? itemWearSlot(itemId);
@@ -373,12 +452,24 @@ export class GameSession {
       return;
     }
     const prev = this.state.save.equipment[slot];
+    if (!this.state.removeItem(itemId, 1)) return;
+    // Return previously worn piece to the bag
+    if (prev && prev !== itemId) {
+      if (!this.state.addItem(prev, 1)) {
+        // Bag full — undo: put new item back, keep previous worn
+        this.state.addItem(itemId, 1);
+        this.state.log("Inventory full — can't swap gear.");
+        return;
+      }
+    }
     this.state.save.equipment[slot] = itemId;
     if (prev && prev !== itemId) {
       this.state.log(`Swapped ${ITEMS[prev]?.name ?? prev} → ${def.name} (${WEAR_SLOT_LABELS[slot]}).`);
     } else if (slot === "weapon") {
       const ticks = def.attackTicks ?? UNARMED_ATTACK_TICKS;
-      this.state.log(`Worn ${def.name} (${WEAR_SLOT_LABELS[slot]}${def.category === "weapon" || def.attackTicks ? `, ${ticks}-tick` : ""}).`);
+      this.state.log(
+        `Worn ${def.name} (${WEAR_SLOT_LABELS[slot]}${def.category === "weapon" || def.attackTicks ? `, ${ticks}-tick` : ""}).`
+      );
     } else {
       this.state.log(`Worn ${def.name} (${WEAR_SLOT_LABELS[slot]}).`);
     }
@@ -474,11 +565,8 @@ export class GameSession {
       return;
     }
     if (def.wearSlot) {
-      if (this.state.save.equipment[def.wearSlot] === itemId) {
-        this.unequipSlot(def.wearSlot);
-      } else {
-        this.wearItem(itemId);
-      }
+      // Equipped gear lives in Worn only — inventory click always wears (moves into slot).
+      this.wearItem(itemId);
       return;
     }
     this.state.log(`You can't use ${def.name} that way.`);

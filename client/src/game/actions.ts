@@ -156,10 +156,6 @@ function chopTree(node: WorldNode, state: GameState, world: World3D, session?: G
     state.log("Wear a Bronze Axe (Inventory → Wear / Worn → Weapon) to chop.");
     return;
   }
-  if (state.invQty("bronze_axe") < 1) {
-    state.log("You need a Bronze Axe in your inventory.");
-    return;
-  }
   const treeKind = String(node.meta?.tree ?? "tree");
   const logId = String(node.meta?.log ?? (treeKind === "oak" ? "oak_logs" : "tree_logs"));
   const needWc = Number(node.meta?.requiredWoodcutting ?? (treeKind === "oak" ? OAK_WOODCUTTING_LEVEL : 0));
@@ -216,10 +212,6 @@ function mineRock(node: WorldNode, state: GameState, _world: World3D, session?: 
     state.log("Wear a Bronze Pickaxe (Inventory → Wear / Worn → Weapon) to mine.");
     return;
   }
-  if (state.invQty("bronze_pickaxe") < 1) {
-    state.log("You need a Bronze Pickaxe in your inventory.");
-    return;
-  }
   const ore = String(node.meta?.ore ?? "copper_ore");
   const finish = () => {
     if (!state.addItem(ore, 1)) return;
@@ -238,10 +230,6 @@ function mineRock(node: WorldNode, state: GameState, _world: World3D, session?: 
 function fish(node: WorldNode, state: GameState, _world: World3D, session?: GameSession) {
   if (state.save.equipment.weapon !== "fishing_rod") {
     state.log("Wear a Fishing Rod (Inventory → Wear / Worn → Weapon) to fish.");
-    return;
-  }
-  if (state.invQty("fishing_rod") < 1) {
-    state.log("You need a Fishing Rod in your inventory.");
     return;
   }
   const finish = () => {
@@ -267,12 +255,17 @@ function smelt(state: GameState) {
   if (q.status === "active") state.advanceQuest("q2_catcher_path", 2, "smelted");
 }
 
+function ownsItem(state: GameState, itemId: string): boolean {
+  if (state.invQty(itemId) > 0) return true;
+  return Object.values(state.save.equipment).includes(itemId);
+}
+
 function hasBronzeSword(state: GameState): boolean {
-  return state.invQty("bronze_sword") > 0 || state.save.equipment.weapon === "bronze_sword";
+  return ownsItem(state, "bronze_sword");
 }
 
 function hasBasicStaff(state: GameState): boolean {
-  return state.invQty("basic_staff") > 0 || state.save.equipment.weapon === "basic_staff";
+  return ownsItem(state, "basic_staff");
 }
 
 function craft(state: GameState) {

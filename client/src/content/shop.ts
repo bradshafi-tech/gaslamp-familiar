@@ -18,6 +18,8 @@ export const GENERAL_SHOP: ShopOffer[] = [
   { itemId: "bronze_axe", price: 15, blurb: "Wear to chop" },
   { itemId: "bronze_pickaxe", price: 15, blurb: "Wear to mine" },
   { itemId: "fishing_rod", price: 12, blurb: "Wear to fish" },
+  { itemId: "oak_shortbow", price: 16, blurb: "Wear for Archery" },
+  { itemId: "bronze_arrows", price: 1, blurb: "Bow ammo (1 coin each)" },
   { itemId: "oak_buckler", price: 18, blurb: "Shield slot" },
   { itemId: "linen_cap", price: 7, blurb: "Hat slot" },
   { itemId: "work_smock", price: 9, blurb: "Top slot" },

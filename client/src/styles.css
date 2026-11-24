@@ -739,23 +739,29 @@ input {
   transform: translate(-50%, -50%) scale(0.85);
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.45rem;
+  font-size: 1.55rem;
   letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1;
   text-shadow: 0 0 4px #000, 0 2px 0 #000, 0 0 12px rgba(0, 0, 0, 0.65);
   opacity: 0;
   transition: transform 1s ease, opacity 1s ease;
   z-index: 16;
   pointer-events: none;
+  min-width: 1.4em;
 }
 
 .splat.go {
   opacity: 1;
-  transform: translate(-50%, calc(-50% - 48px)) scale(1.15);
+  transform: translate(-50%, calc(-50% - 48px)) scale(1.2);
 }
 
-.splat-hit { color: #f6e27a; }
+/* Red melee · blue zero · purple magic · amber ranged · pink incoming */
+.splat-melee { color: #e8483a; }
+.splat-magic { color: #b48cff; }
+.splat-ranged { color: #e0a040; }
+.splat-zero { color: #5eb0ff; }
 .splat-hurt { color: #e07060; }
-.splat-miss { color: #9aa3b2; font-size: 1.1rem; }
 .splat-heal { color: #7ecf8a; }
 
 .combat-status {

@@ -228,7 +228,7 @@ document.addEventListener("pointerdown", (e) => {
 function spawnSplat(
   worldPos: { x: number; y: number; z: number },
   text: string,
-  kind: "hit" | "miss" | "heal" | "hurt"
+  kind: "melee" | "magic" | "ranged" | "zero" | "heal" | "hurt"
 ) {
   if (battleOpen) {
     spawnBattleSplat(text, kind);
@@ -240,22 +240,27 @@ function spawnSplat(
   const el = document.createElement("div");
   el.className = `splat splat-${kind}`;
   el.textContent = text;
-  el.style.left = `${scr.x + (Math.random() * 16 - 8)}px`;
-  el.style.top = `${scr.y + (Math.random() * 10 - 5)}px`;
+  // Centered on the projected point (CSS translate -50%, -50%)
+  el.style.left = `${scr.x}px`;
+  el.style.top = `${scr.y}px`;
   splatLayer.appendChild(el);
   requestAnimationFrame(() => el.classList.add("go"));
   setTimeout(() => el.remove(), 1100);
 }
 
-function spawnBattleSplat(text: string, kind: "hit" | "miss" | "heal" | "hurt") {
+function spawnBattleSplat(
+  text: string,
+  kind: "melee" | "magic" | "ranged" | "zero" | "heal" | "hurt"
+) {
   const layer = document.getElementById("battle-splat-layer");
   if (!layer) return;
   const el = document.createElement("div");
   el.className = `splat splat-${kind} battle-splat`;
   el.textContent = text;
-  const foeSide = kind === "hurt" || kind === "heal";
-  el.style.left = foeSide ? `${18 + Math.random() * 12}%` : `${62 + Math.random() * 14}%`;
-  el.style.top = `${28 + Math.random() * 18}%`;
+  // Player hits land over the foe (right); incoming damage over the ally (left)
+  const overFoe = kind === "melee" || kind === "magic" || kind === "ranged" || kind === "zero";
+  el.style.left = overFoe ? "72%" : "22%";
+  el.style.top = overFoe ? "34%" : "58%";
   layer.appendChild(el);
   requestAnimationFrame(() => el.classList.add("go"));
   setTimeout(() => el.remove(), 1100);
@@ -735,7 +740,7 @@ function renderTabContent() {
           </button>`;
       }).join("") +
       `</div>
-      <p class="muted" style="margin-top:12px;font-size:0.78rem">Fist 5t · Sword 4t · Staff 5t + Water · Alley Rat 7t (weak, drop essence). Attack opens a battle screen.</p>`;
+      <p class="muted" style="margin-top:12px;font-size:0.78rem">Attack=accuracy · Strength=max hit · Defence=avoid. Bow+arrows from Pip's shop. Splats: red melee · purple magic · blue 0.</p>`;
     tabPanel.querySelector("#btn-unequip")?.addEventListener("click", () => {
       session?.unequipWeapon();
       renderHud();

@@ -157,6 +157,16 @@ function makeHeldMesh(itemId: string): THREE.Object3D | null {
     shaft.position.y = 0.4;
     shaft.rotation.z = -0.25;
     g.add(shaft);
+  } else if (itemId === "oak_shortbow") {
+    const limb = new THREE.Mesh(
+      new THREE.TorusGeometry(0.35, 0.025, 6, 16, Math.PI),
+      wood
+    );
+    limb.rotation.z = Math.PI / 2;
+    limb.position.set(0.05, 0.35, 0);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 6), wood);
+    grip.position.set(0.05, 0.35, 0);
+    g.add(limb, grip);
   } else {
     return null;
   }

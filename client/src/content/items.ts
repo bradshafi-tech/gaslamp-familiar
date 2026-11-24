@@ -16,7 +16,13 @@ export type ItemDef = {
   allowsMagic?: boolean;
   /** Bonus to magic hit / accuracy when casting with this weapon. */
   magicBonus?: number;
-  /** Worn slot — weapon also holds axe / pickaxe / staff. */
+  /** Bow / ranged weapon — needs arrows in inventory. */
+  allowsRanged?: boolean;
+  /** Bonus to ranged accuracy / max hit. */
+  rangedBonus?: number;
+  /** Ammo item id consumed per ranged attack (e.g. bronze_arrows). */
+  ammoId?: string;
+  /** Worn slot — weapon also holds axe / pickaxe / staff / bow. */
   wearSlot?: WearSlot;
   /** Mesh tint for block-man clothing overlays. */
   wearColor?: number;
@@ -180,6 +186,33 @@ export const ITEMS: Record<string, ItemDef> = {
     iconColor: "#6a9ec9",
     examine: "Wear to cast Water (needs Water Essence). Craft from 2 tree logs + iron scrap.",
     desc: "Magic weapon — wear to unlock Water.",
+  },
+  oak_shortbow: {
+    id: "oak_shortbow",
+    name: "Oak Shortbow",
+    stackable: false,
+    category: "weapon",
+    wearSlot: "weapon",
+    attackTicks: 4,
+    attackBonus: 0,
+    strengthBonus: 0,
+    allowsRanged: true,
+    rangedBonus: 3,
+    ammoId: "bronze_arrows",
+    icon: "🏹",
+    iconColor: "#6b4b2a",
+    examine: "Wear to fight at range. Needs Bronze Arrows in your bag.",
+    desc: "Ranged weapon — Archery accuracy & max hit.",
+  },
+  bronze_arrows: {
+    id: "bronze_arrows",
+    name: "Bronze Arrows",
+    stackable: true,
+    category: "misc",
+    icon: "➜",
+    iconColor: "#b87333",
+    examine: "Ammo for the Oak Shortbow. Consumed each shot.",
+    desc: "Bow ammo.",
   },
   water_essence: {
     id: "water_essence",
