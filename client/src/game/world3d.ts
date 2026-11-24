@@ -258,30 +258,63 @@ export class World3D {
     const g = new THREE.Group();
     if (node.kind === "tree") {
       const isOak = String(node.meta?.tree ?? "") === "oak";
+      // Oaks: pale/light trunk + dark canopy so they read apart from common trees.
       const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(isOak ? 0.28 : 0.2, isOak ? 0.36 : 0.28, isOak ? 1.8 : 1.4, 8),
-        new THREE.MeshStandardMaterial({ color: isOak ? 0x4a3220 : 0x5a3a22 })
+        new THREE.CylinderGeometry(isOak ? 0.3 : 0.2, isOak ? 0.38 : 0.28, isOak ? 1.9 : 1.4, 8),
+        new THREE.MeshStandardMaterial({
+          color: isOak ? 0xd2c4a8 : 0x5a3a22,
+          roughness: isOak ? 0.92 : 0.88,
+        })
       );
-      trunk.position.y = isOak ? 0.9 : 0.7;
+      trunk.position.y = isOak ? 0.95 : 0.7;
       const leaves = new THREE.Mesh(
-        new THREE.SphereGeometry(isOak ? 1.15 : 0.9, 10, 10),
-        new THREE.MeshStandardMaterial({ color: isOak ? 0x2f5a32 : 0x3f6b3a })
+        new THREE.SphereGeometry(isOak ? 1.2 : 0.9, 10, 10),
+        new THREE.MeshStandardMaterial({
+          color: isOak ? 0x1a3a1e : 0x3f6b3a,
+          roughness: 0.9,
+        })
       );
-      leaves.position.y = isOak ? 2.2 : 1.8;
-      g.add(trunk, leaves);
+      leaves.position.y = isOak ? 2.35 : 1.8;
+      if (isOak) {
+        const leaves2 = new THREE.Mesh(
+          new THREE.SphereGeometry(0.85, 8, 8),
+          new THREE.MeshStandardMaterial({ color: 0x142e18, roughness: 0.92 })
+        );
+        leaves2.position.set(0.45, 2.0, -0.2);
+        g.add(trunk, leaves, leaves2);
+      } else {
+        g.add(trunk, leaves);
+      }
     } else if (node.kind === "rock") {
-      const oreTint = String(node.meta?.ore ?? "").includes("tin") ? 0x8a8e86 : 0x8a6a4a;
+      // Copper = warm orange veins on brown rock; Tin = cool silver on blue-grey rock.
+      const isTin = String(node.meta?.ore ?? "").includes("tin");
       const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(0.7),
-        new THREE.MeshStandardMaterial({ color: 0x7a756c, roughness: 0.9 })
+        isTin ? new THREE.OctahedronGeometry(0.72, 0) : new THREE.DodecahedronGeometry(0.7),
+        new THREE.MeshStandardMaterial({
+          color: isTin ? 0x6a7278 : 0x6b5340,
+          roughness: 0.92,
+          metalness: isTin ? 0.12 : 0.04,
+        })
       );
-      rock.position.y = 0.4;
-      const fleck = new THREE.Mesh(
-        new THREE.SphereGeometry(0.18, 6, 6),
-        new THREE.MeshStandardMaterial({ color: oreTint, metalness: 0.35, roughness: 0.55 })
+      rock.position.y = 0.42;
+      rock.rotation.y = isTin ? 0.4 : 0.15;
+      const oreMat = new THREE.MeshStandardMaterial({
+        color: isTin ? 0xc8d0d4 : 0xc07838,
+        metalness: isTin ? 0.65 : 0.45,
+        roughness: isTin ? 0.35 : 0.5,
+        emissive: isTin ? 0x334044 : 0x4a2808,
+        emissiveIntensity: 0.18,
+      });
+      const fleckA = new THREE.Mesh(new THREE.SphereGeometry(isTin ? 0.14 : 0.16, 6, 6), oreMat);
+      fleckA.position.set(0.28, 0.55, 0.18);
+      const fleckB = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), oreMat.clone());
+      fleckB.position.set(isTin ? -0.22 : -0.18, 0.48, 0.28);
+      const fleckC = new THREE.Mesh(
+        isTin ? new THREE.BoxGeometry(0.22, 0.08, 0.12) : new THREE.SphereGeometry(0.12, 6, 6),
+        oreMat.clone()
       );
-      fleck.position.set(0.25, 0.55, 0.2);
-      g.add(rock, fleck);
+      fleckC.position.set(0.05, 0.72, -0.2);
+      g.add(rock, fleckA, fleckB, fleckC);
     } else if (node.kind === "fish") {
       const water = new THREE.Mesh(
         new THREE.CircleGeometry(1.85, 28),
