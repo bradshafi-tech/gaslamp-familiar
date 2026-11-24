@@ -3,6 +3,7 @@ import { TOWN_BOUNDS, WORLD_NODES, type WorldNode } from "../content/world";
 import { PET_SPECIES } from "../content/pets";
 import { makeDragonInstance, makeEggInstance } from "./dragon";
 import { loadPetModel } from "./pet-models";
+import { createPlayerModel } from "./player-model";
 
 export type InteractTarget = {
   node: WorldNode;
@@ -78,19 +79,8 @@ export class World3D {
 
     this.spawnNodes();
 
-    // Player
-    this.player = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.35, 0.7, 4, 8),
-      new THREE.MeshStandardMaterial({ color: 0x2f5d8a })
-    );
-    body.position.y = 0.9;
-    const hat = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.32, 0.25, 10),
-      new THREE.MeshStandardMaterial({ color: 0x1c1c22 })
-    );
-    hat.position.y = 1.55;
-    this.player.add(body, hat);
+    // Player — Poly Pizza Character Base (https://poly.pizza/m/qbDLeTtb8K)
+    this.player = createPlayerModel();
     this.scene.add(this.player);
 
     this.petRoot = new THREE.Group();
