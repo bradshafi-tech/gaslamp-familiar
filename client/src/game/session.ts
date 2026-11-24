@@ -1,9 +1,11 @@
 import {
   skillingTicksForLevel,
+  WEAR_SLOT_LABELS,
   type AttackStyle,
   type SkillId,
+  type WearSlot,
 } from "@shared/index";
-import { ITEMS, UNARMED_ATTACK_TICKS, equippedWeapon, itemExamine } from "../content/items";
+import { ITEMS, UNARMED_ATTACK_TICKS, equippedWeapon, itemExamine, itemWearSlot } from "../content/items";
 import type { WorldNode } from "../content/world";
 import { researchDefForItem, researchDefForNode, researchIdForPetSpecies, RESEARCH_DEFS } from "../content/research";
 import { PET_SPECIES } from "../content/pets";
@@ -39,6 +41,7 @@ export class GameSession {
   }
 
   private refresh() {
+    this.world.setPlayerEquipment(this.state.save.equipment);
     this.onUi?.();
   }
 
@@ -253,10 +256,13 @@ export class GameSession {
     this.state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
     if (node.meta?.xpMagic) this.state.grantXp("magic", Number(node.meta.xpMagic));
     this.state.addItem("iron_scrap", 1);
-    // Alley Rats drip Water Essence for the Water spell
+    // Alley Rats drip Water Essence + 1–5 coins
     if (node.id.includes("rat") || node.label.toLowerCase().includes("rat")) {
       this.state.addItem("water_essence", 1);
-      this.state.log("The rat leaves Water Essence.");
+      const coins = 1 + Math.floor(Math.random() * 5);
+      this.state.save.gold += coins;
+      this.state.mark();
+      this.state.log(`The rat leaves Water Essence and ${coins} coin${coins === 1 ? "" : "s"}.`);
     }
     this.world.hideEnemy(id);
     setTimeout(() => this.world.showEnemy(id, Number(node.meta?.hp ?? 5)), 20000);
@@ -334,13 +340,48 @@ export class GameSession {
   }
 
   unequipWeapon() {
-    if (!this.state.save.equipment.weapon) {
-      this.state.log("Already unarmed (Fist, 5 ticks).");
+    this.unequipSlot("weapon");
+  }
+
+  unequipSlot(slot: WearSlot) {
+    const id = this.state.save.equipment[slot];
+    if (!id) {
+      this.state.log(`${WEAR_SLOT_LABELS[slot]} is empty.`);
       return;
     }
-    const name = ITEMS[this.state.save.equipment.weapon]?.name ?? "weapon";
-    delete this.state.save.equipment.weapon;
-    this.state.log(`Unequipped ${name}. Fighting with Fist (5 ticks).`);
+    const name = ITEMS[id]?.name ?? id;
+    delete this.state.save.equipment[slot];
+    if (slot === "weapon") {
+      this.state.log(`Unequipped ${name}. Fighting with Fist (5 ticks).`);
+    } else {
+      this.state.log(`Removed ${name} from ${WEAR_SLOT_LABELS[slot]}.`);
+    }
+    this.state.mark();
+    this.refresh();
+  }
+
+  /** Wear an item into its slot (must still be in inventory). */
+  wearItem(itemId: string) {
+    const def = ITEMS[itemId];
+    const slot = def?.wearSlot ?? itemWearSlot(itemId);
+    if (!def || !slot) {
+      this.state.log("That can't be worn.");
+      return;
+    }
+    if (this.state.invQty(itemId) < 1) {
+      this.state.log(`You don't have ${def.name}.`);
+      return;
+    }
+    const prev = this.state.save.equipment[slot];
+    this.state.save.equipment[slot] = itemId;
+    if (prev && prev !== itemId) {
+      this.state.log(`Swapped ${ITEMS[prev]?.name ?? prev} → ${def.name} (${WEAR_SLOT_LABELS[slot]}).`);
+    } else if (slot === "weapon") {
+      const ticks = def.attackTicks ?? UNARMED_ATTACK_TICKS;
+      this.state.log(`Worn ${def.name} (${WEAR_SLOT_LABELS[slot]}${def.category === "weapon" || def.attackTicks ? `, ${ticks}-tick` : ""}).`);
+    } else {
+      this.state.log(`Worn ${def.name} (${WEAR_SLOT_LABELS[slot]}).`);
+    }
     this.state.mark();
     this.refresh();
   }
@@ -432,19 +473,12 @@ export class GameSession {
       this.refresh();
       return;
     }
-    if (def.category === "weapon" && itemId !== "fist") {
-      this.state.save.equipment.weapon = itemId;
-      const ticks = def.attackTicks ?? UNARMED_ATTACK_TICKS;
-      this.state.log(`Equipped ${def.name} (${ticks}-tick attacks).`);
-      this.state.mark();
-      this.refresh();
-      return;
-    }
-    if (def.category === "tool") {
-      this.state.save.equipment.tool = itemId;
-      this.state.log(`Equipped ${def.name}.`);
-      this.state.mark();
-      this.refresh();
+    if (def.wearSlot) {
+      if (this.state.save.equipment[def.wearSlot] === itemId) {
+        this.unequipSlot(def.wearSlot);
+      } else {
+        this.wearItem(itemId);
+      }
       return;
     }
     this.state.log(`You can't use ${def.name} that way.`);
@@ -453,6 +487,12 @@ export class GameSession {
   dropItemSlot(index: number) {
     const dropped = this.state.dropSlot(index);
     if (!dropped) return;
+    // Clear worn slots that referenced the dropped item if none remain.
+    for (const slot of Object.keys(this.state.save.equipment) as WearSlot[]) {
+      if (this.state.save.equipment[slot] === dropped.itemId && this.state.invQty(dropped.itemId) < 1) {
+        delete this.state.save.equipment[slot];
+      }
+    }
     this.state.log(`You drop ${dropped.qty}× ${ITEMS[dropped.itemId]?.name ?? dropped.itemId}.`);
     this.refresh();
   }

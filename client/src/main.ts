@@ -6,22 +6,29 @@ import {
   LIGHT_ORB_ASHES_TO_L2,
   LIGHT_ORB_OAK_TO_L30,
   LIGHT_ORB_SPECIES,
+  MAGIC_SPELLS,
   SKILL_DESCRIPTIONS,
   SKILL_IDS,
   SKILL_LABELS,
+  WEAR_SLOTS,
+  WEAR_SLOT_LABELS,
   type AttackStyle,
   type CombatSpellId,
   type AuthUser,
   type CharacterSave,
   type SkillId,
+  type WearSlot,
 } from "@shared/index";
 import { PET_SPECIES } from "./content/pets";
 import { QUESTS } from "./content/quests";
-import { ITEMS, equippedWeapon, itemName } from "./content/items";
+import { ITEMS, equippedWeapon, itemName, itemWearSlot } from "./content/items";
+import { GENERAL_SHOP, SHOP_NAME } from "./content/shop";
 import { GameState } from "./game/state";
 import { World3D } from "./game/world3d";
-import { castSpark, eatFood, handleEnemyDefeated, interact } from "./game/actions";
+import { buyFromShop, castSpark, eatFood, handleEnemyDefeated, interact, setOpenShopHandler } from "./game/actions";
 import { GameSession } from "./game/session";
+import { BattleStage } from "./game/battle-stage";
+import { Minimap } from "./game/minimap";
 import type { WorldNode } from "./content/world";
 import * as api from "./net/api";
 
@@ -50,22 +57,15 @@ app.innerHTML = `
     <div id="viewport"></div>
     <div id="battle-screen" class="battle-screen" hidden>
       <div class="battle-backdrop"></div>
-      <div class="battle-stage">
-        <div class="battle-side ally">
-          <div class="battle-stack">
-            <div class="battle-fighter player-block" aria-hidden="true"></div>
-            <div class="battle-fighter pet-orb" id="battle-pet" aria-hidden="true"></div>
-          </div>
-          <div class="battle-hud-card">
+      <div class="battle-stage" id="battle-stage-host">
+        <div class="battle-hud-overlay">
+          <div class="battle-hud-card ally-card">
             <div class="battle-name" id="battle-player-name">You</div>
             <div class="hp-track"><div class="hp-fill ally" id="battle-player-hp"></div></div>
             <div class="hp-text" id="battle-player-hp-text">10/10</div>
             <div class="battle-pet-label" id="battle-pet-name">Light Orb</div>
           </div>
-        </div>
-        <div class="battle-side foe">
-          <div class="battle-fighter enemy-rat" id="battle-enemy-visual" aria-hidden="true"></div>
-          <div class="battle-hud-card">
+          <div class="battle-hud-card foe-card">
             <div class="battle-name" id="battle-enemy-name">Enemy</div>
             <div class="hp-track"><div class="hp-fill foe" id="battle-enemy-hp"></div></div>
             <div class="hp-text" id="battle-enemy-hp-text">—</div>
@@ -103,15 +103,18 @@ app.innerHTML = `
       <div class="skills-rail" id="skills-panel"></div>
       <div class="right-dock">
         <div class="tab-bar" id="tab-bar" role="tablist">
-          <button type="button" class="tab-btn active" data-tab="inv" role="tab">Inventory</button>
+          <button type="button" class="tab-btn active" data-tab="inv" role="tab" title="Inventory">🎒</button>
+          <button type="button" class="tab-btn" data-tab="worn" role="tab" title="Worn">👕</button>
           <button type="button" class="tab-btn" data-tab="quests" role="tab">Quests</button>
           <button type="button" class="tab-btn" data-tab="pets" role="tab">Pets</button>
+          <button type="button" class="tab-btn" data-tab="magic" role="tab">Magic</button>
           <button type="button" class="tab-btn" data-tab="research" role="tab">Research</button>
           <button type="button" class="tab-btn" data-tab="styles" role="tab">Combat</button>
           <button type="button" class="tab-btn" data-tab="settings" role="tab">Settings</button>
         </div>
         <div class="tab-panel" id="tab-panel" role="tabpanel"></div>
       </div>
+      <div id="minimap-host" class="minimap-host"></div>
       <div class="bottom-strip">
         <div class="info-feed" id="info-feed" aria-live="polite"></div>
         <form class="chat-form" id="chat-form">
@@ -123,7 +126,7 @@ app.innerHTML = `
   </div>
 `;
 
-type SideTab = "inv" | "quests" | "pets" | "research" | "styles" | "settings";
+type SideTab = "inv" | "worn" | "quests" | "pets" | "magic" | "research" | "styles" | "settings";
 
 const authEl = document.getElementById("auth")!;
 const gameEl = document.getElementById("game")!;
@@ -139,6 +142,8 @@ let state: GameState | null = null;
 let world: World3D | null = null;
 let session: GameSession | null = null;
 let user: AuthUser | null = null;
+let battleStage: BattleStage | null = null;
+let minimap: Minimap | null = null;
 let saveTimer = 0;
 let lastUi = 0;
 let chatAfter = 0;
@@ -273,11 +278,20 @@ function openBattle(node: WorldNode) {
   battleEnemyMaxHp = Math.max(1, world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5));
   screen.hidden = false;
   document.getElementById("battle-enemy-name")!.textContent = node.label;
-  const pet = state.activePet();
+  const pet = state.followingPet() ?? state.activePet();
   document.getElementById("battle-pet-name")!.textContent = pet?.name ?? "No pet";
   document.getElementById("battle-feed")!.innerHTML = "";
-  const visual = document.getElementById("battle-enemy-visual")!;
-  visual.className = `battle-fighter ${node.meta?.boss ? "enemy-boss" : "enemy-rat"}`;
+  if (!battleStage) {
+    const host = document.getElementById("battle-stage-host");
+    if (host) battleStage = new BattleStage(host);
+  }
+  battleStage?.show({
+    enemy: node,
+    petSpeciesId: pet?.speciesId ?? null,
+    petColor: pet?.color,
+    equipment: state.save.equipment,
+  });
+  world.setPlayerEquipment(state.save.equipment);
   refreshBattleHud();
   pushBattleFeed(`A wild ${node.label} appears!`);
 }
@@ -286,7 +300,40 @@ function closeBattle() {
   const screen = document.getElementById("battle-screen");
   if (screen) screen.hidden = true;
   battleOpen = false;
+  battleStage?.hide();
   document.getElementById("battle-splat-layer")!.innerHTML = "";
+}
+
+function openShopUi() {
+  if (!state) return;
+  const gold = state.save.gold;
+  const rows = GENERAL_SHOP.map((offer) => {
+    const def = ITEMS[offer.itemId];
+    const can = gold >= offer.price;
+    return `<button type="button" class="shop-row ${can ? "" : "disabled"}" data-buy="${offer.itemId}" ${can ? "" : "disabled"}>
+      <span class="shop-icon" style="background:${def?.iconColor ?? "#666"}">${def?.icon ?? "·"}</span>
+      <span class="shop-info">
+        <strong>${escapeHtml(def?.name ?? offer.itemId)}</strong>
+        <span class="muted">${escapeHtml(offer.blurb ?? "")}</span>
+      </span>
+      <span class="shop-price">${offer.price}c</span>
+    </button>`;
+  }).join("");
+  openModal(
+    SHOP_NAME,
+    `<p class="muted" style="margin:0 0 10px">Your coins: <strong id="shop-gold">${gold}</strong></p>
+     <div class="shop-list">${rows}</div>`
+  );
+  modalRoot.querySelectorAll("[data-buy]").forEach((el) => {
+    el.addEventListener("click", () => {
+      if (!state) return;
+      const id = (el as HTMLElement).dataset.buy!;
+      if (buyFromShop(state, id)) {
+        openShopUi();
+        renderHud();
+      }
+    });
+  });
 }
 
 function refreshBattleHud() {
@@ -370,25 +417,23 @@ function renderInvSlotMenu(index: number, clientX: number, clientY: number) {
   const slot = state.inventoryList()[index];
   if (!slot) return;
   const def = ITEMS[slot.itemId];
+  const wear = def?.wearSlot ?? itemWearSlot(slot.itemId);
   let useLabel = `Use ${itemName(slot.itemId)}`;
   if (slot.itemId === "ashes") useLabel = "Feed Light Orb (ashes)";
   else if (slot.itemId === "oak_logs") useLabel = "Feed / burn Oak Log";
   else if (slot.itemId === "tree_logs") useLabel = "Burn Tree Log → ash";
-  else if (def?.category === "weapon") {
+  else if (wear) {
     useLabel =
-      state.save.equipment.weapon === slot.itemId
-        ? `Unequip ${itemName(slot.itemId)}`
-        : `Equip ${itemName(slot.itemId)}`;
+      state.save.equipment[wear] === slot.itemId
+        ? `Remove ${itemName(slot.itemId)}`
+        : `Wear ${itemName(slot.itemId)}`;
   }
   const items: { label: string; action: () => void }[] = [
     {
       label: useLabel,
       action: () => {
-        if (def?.category === "weapon" && state!.save.equipment.weapon === slot.itemId) {
-          session!.unequipWeapon();
-        } else {
-          session!.useItem(slot.itemId);
-        }
+        session!.useItem(slot.itemId);
+        renderHud();
       },
     },
     { label: "Examine", action: () => session!.examineItem(slot.itemId) },
@@ -434,30 +479,73 @@ function renderTabContent() {
     const cells = Array.from({ length: INV_SIZE }, (_, i) => {
       const slot = slots[i];
       if (!slot) return `<button type="button" class="inv-slot empty" data-slot="${i}"></button>`;
+      const def = ITEMS[slot.itemId];
       const short = itemName(slot.itemId);
-      return `<button type="button" class="inv-slot" data-slot="${i}" title="${escapeHtml(short)}">
+      const worn =
+        def?.wearSlot && s.equipment[def.wearSlot] === slot.itemId ? " worn" : "";
+      return `<button type="button" class="inv-slot${worn}" data-slot="${i}" title="${escapeHtml(short)}">
+        <span class="inv-icon" style="background:${def?.iconColor ?? "#555"}">${def?.icon ?? "·"}</span>
         <span class="inv-name">${escapeHtml(short)}</span>
         <span class="inv-qty">${slot.qty > 1 ? slot.qty : ""}</span>
       </button>`;
     }).join("");
-    tabPanel.innerHTML = `<h2>Inventory <span class="muted" style="font-weight:400">${slots.filter(Boolean).length}/${INV_SIZE}</span></h2><div class="inv-grid">${cells}</div>`;
+    tabPanel.innerHTML = `<h2>Inventory <span class="muted" style="font-weight:400">${slots.filter(Boolean).length}/${INV_SIZE}</span></h2>
+      <div class="inv-grid">${cells}</div>
+      <nav class="inv-subtabs" aria-label="Bag panels">
+        <button type="button" class="inv-subtab active" data-goto="inv" title="Inventory">🎒</button>
+        <button type="button" class="inv-subtab" data-goto="worn" title="Worn">👕</button>
+      </nav>`;
+    tabPanel.querySelectorAll("[data-goto]").forEach((el) => {
+      el.addEventListener("click", () => setActiveTab((el as HTMLElement).dataset.goto as SideTab));
+    });
     tabPanel.querySelectorAll("[data-slot]").forEach((el) => {
       const index = Number((el as HTMLElement).dataset.slot);
       el.addEventListener("click", () => {
         const slot = state!.inventoryList()[index];
         if (!slot || !session) return;
-        const def = ITEMS[slot.itemId];
-        if (def?.category === "weapon" && state!.save.equipment.weapon === slot.itemId) {
-          session.unequipWeapon();
-        } else {
-          session.useItem(slot.itemId);
-        }
+        session.useItem(slot.itemId);
         renderHud();
       });
       el.addEventListener("contextmenu", (ev) => {
         const e = ev as MouseEvent;
         e.preventDefault();
         renderInvSlotMenu(index, e.clientX, e.clientY);
+      });
+    });
+    return;
+  }
+
+  if (activeTab === "worn") {
+    const eq = s.equipment;
+    const slots = WEAR_SLOTS.map((slot) => {
+      const id = eq[slot];
+      const def = id ? ITEMS[id] : null;
+      return `<button type="button" class="worn-slot ${id ? "" : "empty"}" data-wear="${slot}">
+        <span class="worn-label">${WEAR_SLOT_LABELS[slot]}</span>
+        ${
+          def
+            ? `<span class="inv-icon" style="background:${def.iconColor}">${def.icon}</span><span class="inv-name">${escapeHtml(def.name)}</span>`
+            : `<span class="muted">Empty</span>`
+        }
+      </button>`;
+    }).join("");
+    tabPanel.innerHTML = `<h2>Worn</h2>
+      <p class="muted" style="margin:0 0 8px;font-size:0.78rem">Weapon slot holds sword, staff, axe, or pickaxe.</p>
+      <div class="worn-grid">${slots}</div>
+      <nav class="inv-subtabs" aria-label="Bag panels">
+        <button type="button" class="inv-subtab" data-goto="inv" title="Inventory">🎒</button>
+        <button type="button" class="inv-subtab active" data-goto="worn" title="Worn">👕</button>
+      </nav>`;
+    tabPanel.querySelectorAll("[data-goto]").forEach((el) => {
+      el.addEventListener("click", () => setActiveTab((el as HTMLElement).dataset.goto as SideTab));
+    });
+    tabPanel.querySelectorAll("[data-wear]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const slot = (el as HTMLElement).dataset.wear as WearSlot;
+        if (state!.save.equipment[slot]) {
+          session?.unequipSlot(slot);
+          renderHud();
+        }
       });
     });
     return;
@@ -505,29 +593,105 @@ function renderTabContent() {
               progress = `<div class="muted">Fully grown (ash → oak loop)</div>`;
             }
           }
-          return `<div class="pet-item ${p.active ? "active" : ""}" data-pet="${p.id}" data-species="${p.speciesId}">
-            <strong>${p.name}</strong> · lv ${p.level}${colorNote}
+          const out = p.following ? " · following" : " · in bag";
+          return `<div class="pet-item ${p.following ? "active" : ""}" data-pet="${p.id}" data-species="${p.speciesId}">
+            <strong>${p.name}</strong> · lv ${p.level}${colorNote}${out}
             <div class="muted">${(sp?.traits ?? p.traits).join(", ")}</div>
             ${progress}
+            <div class="pet-actions">
+              <button type="button" class="linkish" data-follow="${p.id}">Follow</button>
+              <button type="button" class="linkish" data-bag="${p.id}">Put in bag</button>
+            </div>
           </div>`;
         })
         .join("") +
-      `<p class="muted" style="margin-top:6px;font-size:0.75rem">Click to set active · Right-click Research</p>`;
-    tabPanel.querySelectorAll("[data-pet]").forEach((el) => {
-      el.addEventListener("click", () => {
-        state!.setActivePet((el as HTMLElement).dataset.pet!);
+      `<p class="muted" style="margin-top:6px;font-size:0.75rem">Follow puts the pet out · Put in bag recalls it</p>`;
+    tabPanel.querySelectorAll("[data-follow]").forEach((el) => {
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        state!.setPetFollowing((el as HTMLElement).dataset.follow!);
         syncPetVisual();
         renderHud();
       });
+    });
+    tabPanel.querySelectorAll("[data-bag]").forEach((el) => {
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        state!.putPetInBag((el as HTMLElement).dataset.bag!);
+        syncPetVisual();
+        renderHud();
+      });
+    });
+    tabPanel.querySelectorAll("[data-pet]").forEach((el) => {
       el.addEventListener("contextmenu", (ev) => {
         const e = ev as MouseEvent;
         e.preventDefault();
         const species = (el as HTMLElement).dataset.species!;
         const petId = (el as HTMLElement).dataset.pet!;
         showCtx(e.clientX, e.clientY, [
-          { label: "Set active", action: () => { state!.setActivePet(petId); syncPetVisual(); } },
+          {
+            label: "Follow",
+            action: () => {
+              state!.setPetFollowing(petId);
+              syncPetVisual();
+              renderHud();
+            },
+          },
+          {
+            label: "Put in bag",
+            action: () => {
+              state!.putPetInBag(petId);
+              syncPetVisual();
+              renderHud();
+            },
+          },
           { label: "Research", action: () => session?.researchPetSpecies(species) },
         ]);
+      });
+    });
+    return;
+  }
+
+  if (activeTab === "magic") {
+    const magicLvl = s.skills.magic.level;
+    const essence = state.invQty("water_essence");
+    const staffOn = !!equippedWeapon(s.equipment.weapon).allowsMagic;
+    tabPanel.innerHTML =
+      `<h2>Magic</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:0.82rem">Level ${magicLvl} · essence ${essence}${staffOn ? " · staff worn" : ""}</p>
+      <div class="style-list">` +
+      MAGIC_SPELLS.map((sp) => {
+        const locked = magicLvl < sp.level;
+        const active = sp.id === "water" && s.selectedSpell === "water";
+        return `<button type="button" class="style-pick spell-pick ${active ? "active" : ""}" data-magic="${sp.id}" ${locked ? "disabled" : ""}>
+          <strong>${sp.label}</strong> <span class="muted">Lv ${sp.level} · ${sp.kind}</span>
+          <span class="muted">${sp.desc}</span>
+        </button>`;
+      }).join("") +
+      `</div>`;
+    tabPanel.querySelectorAll("[data-magic]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const id = (el as HTMLElement).dataset.magic;
+        if (id === "spark") {
+          castSpark(state!);
+          renderHud();
+          return;
+        }
+        if (id === "water") {
+          const w = equippedWeapon(state!.save.equipment.weapon);
+          if (!w.allowsMagic) {
+            pushLog("Wear a Basic Staff before selecting Water.");
+            return;
+          }
+          if (state!.save.selectedSpell === "water") {
+            state!.setSelectedSpell(null);
+            pushLog("Water deselected — back to melee styles.");
+          } else {
+            state!.setSelectedSpell("water");
+            pushLog("Combat spell: Water");
+          }
+          renderHud();
+        }
       });
     });
     return;
@@ -603,20 +767,14 @@ function renderTabContent() {
   tabPanel.innerHTML = `
     <h2>Settings</h2>
     <div class="toolbar">
-      <button type="button" class="primary" id="btn-spark">Cast Spark (burn logs)</button>
       <button type="button" id="btn-eat">Eat Bread</button>
       <button type="button" id="btn-nearest">Interact nearest</button>
     </div>
-    <p class="muted" style="margin-top:10px;font-size:0.8rem">Left-click walk/use · Right-click Walk here / Use / Research · tabs open one panel at a time.</p>
+    <p class="muted" style="margin-top:10px;font-size:0.8rem">Spark is on the Magic tab. Wear tools in Worn. Shop is south of spawn (Pip).</p>
     <div class="toolbar" style="margin-top:12px">
       <button type="button" id="btn-save-panel">Save now</button>
       <button type="button" id="btn-logout-panel">Log out</button>
     </div>`;
-  tabPanel.querySelector("#btn-spark")?.addEventListener("click", () => {
-    if (!state) return;
-    castSpark(state);
-    renderHud();
-  });
   tabPanel.querySelector("#btn-eat")?.addEventListener("click", () => {
     if (!state) return;
     eatFood(state, "bread");
@@ -658,7 +816,7 @@ function renderHud() {
 
 function syncPetVisual() {
   if (!state || !world) return;
-  const pet = state.activePet();
+  const pet = state.followingPet();
   if (!pet) {
     world.setActivePetSpecies(null);
     return;
@@ -667,7 +825,8 @@ function syncPetVisual() {
     world.setActivePetSpecies("dwarf_dragon", pet.color);
     return;
   }
-  world.setActivePetSpecies(pet.speciesId);
+  world.setActivePetSpecies(pet.speciesId, pet.color ?? PET_SPECIES[pet.speciesId]?.color);
+  world.setPlayerEquipment(state.save.equipment);
 }
 
 async function persist(force = false) {
@@ -721,7 +880,18 @@ async function enterWorld(u: AuthUser, save: CharacterSave) {
   viewport.innerHTML = "";
   world = new World3D(viewport);
   world.setPlayerPosition(save.position.x, save.position.z);
+  world.setPlayerEquipment(save.equipment);
   syncPetVisual();
+
+  const mapHost = document.getElementById("minimap-host");
+  if (mapHost) {
+    mapHost.innerHTML = "";
+    minimap = new Minimap(mapHost);
+    const pos = world.getPlayerPos();
+    minimap.draw({ x: pos.x, z: pos.z, rotY: world.getPlayerFacing() }, world.allNodes());
+  }
+
+  setOpenShopHandler(() => openShopUi());
 
   session = new GameSession(state, world);
   session.onSplat = spawnSplat;
@@ -831,6 +1001,10 @@ async function enterWorld(u: AuthUser, save: CharacterSave) {
     prev = now;
     session?.update(dt);
     world?.update(dt);
+    if (minimap && world) {
+      const pos = world.getPlayerPos();
+      minimap.draw({ x: pos.x, z: pos.z, rotY: world.getPlayerFacing() }, world.allNodes());
+    }
     if (flashSkill && now > flashUntil) {
       flashSkill = null;
       skillFlash.hidden = true;

@@ -3,7 +3,10 @@ import { TOWN_BOUNDS, WORLD_NODES, type WorldNode } from "../content/world";
 import { PET_SPECIES } from "../content/pets";
 import { makeDragonInstance, makeEggInstance } from "./dragon";
 import { loadPetModel } from "./pet-models";
-import { createPlayerModel } from "./player-model";
+import { applyPlayerEquipment, createPlayerModel } from "./player-model";
+import { createLightOrbMesh, tintLightOrb } from "./light-orb";
+import { createAlleyRatMesh, createMistShadeMesh } from "./alley-rat";
+import type { EquipmentState } from "@shared/index";
 
 export type InteractTarget = {
   node: WorldNode;
@@ -85,10 +88,7 @@ export class World3D {
 
     this.petRoot = new THREE.Group();
     this.petRoot.visible = false;
-    this.petOrb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 12, 12),
-      new THREE.MeshStandardMaterial({ color: 0xf6e27a, emissive: 0x664400, emissiveIntensity: 0.35 })
-    );
+    this.petOrb = createLightOrbMesh(0xf6e27a);
     this.petRoot.add(this.petOrb);
     this.scene.add(this.petRoot);
 
@@ -121,6 +121,11 @@ export class World3D {
     this.player.position.set(x, GROUND_Y, z);
   }
 
+  /** Sync worn hat / clothes / held tool onto the block-man mesh. */
+  setPlayerEquipment(equipment: EquipmentState) {
+    applyPlayerEquipment(this.player, equipment);
+  }
+
   setActivePetColor(color: number | null) {
     if (color == null) {
       this.petRoot.visible = false;
@@ -130,8 +135,7 @@ export class World3D {
     if (this.activePetSpecies !== "dwarf_dragon") {
       this.petOrb.visible = true;
       if (this.petDragon) this.petDragon.visible = false;
-      (this.petOrb.material as THREE.MeshStandardMaterial).color.setHex(color);
-      (this.petOrb.material as THREE.MeshStandardMaterial).emissive.setHex(color);
+      tintLightOrb(this.petOrb, color);
     }
   }
 
@@ -141,16 +145,33 @@ export class World3D {
       this.petRoot.visible = false;
       return;
     }
+    // World follower is always the Light Orb mesh — creature GLBs appear on the battle stage.
     this.petRoot.visible = true;
-    this.petOrb.visible = false;
     if (this.petDragon) {
       this.petRoot.remove(this.petDragon);
       this.petDragon = null;
     }
-    // Prefer Poly Pizza GLB; dwarf_dragon still supports colour tint
-    this.petDragon = loadPetModel(speciesId, colorHex);
-    this.petRoot.add(this.petDragon);
-    this.petDragon.visible = true;
+    this.petOrb.visible = true;
+    const hex = colorHex ?? PET_SPECIES[speciesId]?.color ?? 0xf6e27a;
+    tintLightOrb(this.petOrb, hex);
+    this.snapPetToPlayer();
+  }
+
+  /** Place the follower immediately behind the player (fixes stuck-at-origin). */
+  snapPetToPlayer() {
+    if (!this.petRoot.visible) return;
+    const followDist = this.activePetSpecies === "dwarf_dragon" ? 1.25 : 0.9;
+    const y = this.activePetSpecies === "dwarf_dragon" ? 0 : 0.45;
+    this.petRoot.position.set(
+      this.player.position.x - Math.sin(this.player.rotation.y) * followDist,
+      y,
+      this.player.position.z - Math.cos(this.player.rotation.y) * followDist
+    );
+    this.petRoot.rotation.y = this.player.rotation.y;
+  }
+
+  getPlayerFacing() {
+    return this.player.rotation.y;
   }
 
   spawnGroundEgg(x: number, z: number, itemId = "amethyst_egg") {
@@ -165,7 +186,7 @@ export class World3D {
       label: "Amethyst Dragon Egg",
       x,
       z,
-      meta: { itemId, interactRadius: 2.2 },
+      meta: { itemId },
     };
     this.dynamicNodes.push(node);
     const mesh = this.makeNodeMesh(node);
@@ -317,29 +338,79 @@ export class World3D {
       );
       vise.position.set(0.45, 0.95, 0);
       g.add(top, vise);
+    } else if (node.kind === "stove") {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.85, 0.85),
+        new THREE.MeshStandardMaterial({ color: 0x3a3a42, roughness: 0.9 })
+      );
+      body.position.y = 0.42;
+      const grill = new THREE.Mesh(
+        new THREE.BoxGeometry(0.85, 0.06, 0.65),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.4, roughness: 0.5 })
+      );
+      grill.position.y = 0.88;
+      const pot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.2, 0.28, 10),
+        new THREE.MeshStandardMaterial({ color: 0x4a5560, metalness: 0.35, roughness: 0.45 })
+      );
+      pot.position.set(0, 1.05, 0);
+      const glow = new THREE.PointLight(0xff8844, 0.45, 4);
+      glow.position.set(0, 0.5, 0.2);
+      g.add(body, grill, pot, glow);
+    } else if (node.kind === "shop") {
+      // Market stall — counter + striped awning
+      const wood = new THREE.MeshStandardMaterial({ color: 0x6b4b2a, roughness: 0.85 });
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 0.7), wood);
+      counter.position.y = 0.4;
+      const poleL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.5, 6), wood);
+      poleL.position.set(-0.75, 1.0, -0.2);
+      const poleR = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.5, 6), wood);
+      poleR.position.set(0.75, 1.0, -0.2);
+      const awning = new THREE.Mesh(
+        new THREE.BoxGeometry(1.9, 0.06, 1.0),
+        new THREE.MeshStandardMaterial({ color: 0xb8860b, roughness: 0.7 })
+      );
+      awning.position.set(0, 1.7, 0.05);
+      awning.rotation.x = -0.2;
+      const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.35, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.9 })
+      );
+      crate.position.set(0.45, 0.85, 0.05);
+      g.add(counter, poleL, poleR, awning, crate);
     } else if (node.kind === "npc") {
+      const isPip = String(node.meta?.npc ?? "") === "pip";
       const body = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.32, 0.55, 4, 8),
-        new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+        new THREE.MeshStandardMaterial({ color: isPip ? 0x2f6b4a : 0x8b4513 })
       );
       body.position.y = 0.8;
-      g.add(body);
+      if (isPip) {
+        const apron = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.35, 0.12),
+          new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.75 })
+        );
+        apron.position.set(0, 0.95, 0.22);
+        g.add(body, apron);
+      } else {
+        g.add(body);
+      }
     } else if (node.kind === "enemy") {
       if (node.meta?.model === "purple-dragon") {
         const dragon = makeDragonInstance(1.85);
         dragon.rotation.y = Math.PI * 0.75;
         g.add(dragon);
-        // Soft purple aura
         const aura = new THREE.PointLight(0x8a4dff, 0.7, 12);
         aura.position.set(0, 2.2, 0);
         g.add(aura);
+      } else if (node.meta?.boss) {
+        const shade = createMistShadeMesh();
+        shade.position.y = 0.05;
+        g.add(shade);
       } else {
-        const body = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.3, 0.4, 4, 8),
-          new THREE.MeshStandardMaterial({ color: node.meta?.boss ? 0x6a4cff : 0x5a5a62 })
-        );
-        body.position.y = 0.7;
-        g.add(body);
+        const rat = createAlleyRatMesh(0x5a5a62);
+        rat.position.y = 0.02;
+        g.add(rat);
       }
     } else if (node.kind === "wild_pet") {
       const spId = String(node.meta?.species ?? "");
@@ -371,11 +442,15 @@ export class World3D {
     this.renderer.setSize(w, h, false);
   }
 
-  private pickGround(event: PointerEvent): THREE.Vector3 | null {
+  private setPointerFromEvent(event: PointerEvent | MouseEvent) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
+  }
+
+  private pickGround(event: PointerEvent | MouseEvent): THREE.Vector3 | null {
+    this.setPointerFromEvent(event);
     const hits = this.raycaster.intersectObject(this.ground);
     if (!hits[0]) return null;
     const p = hits[0].point.clone();
@@ -385,65 +460,88 @@ export class World3D {
     return p;
   }
 
-  private nearestNode(point: THREE.Vector3, maxDist = 1.6): WorldNode | null {
-    let best: WorldNode | null = null;
-    let bestD = Infinity;
-    for (const node of this.allNodes()) {
-      if (node.kind === "wild_pet") continue;
-      const mesh = this.nodeMeshes.get(node.id);
-      if (mesh && !mesh.visible) continue;
-      // Prefer loot eggs over enemies when both are in range
-      const radius = Number(node.meta?.interactRadius ?? maxDist);
-      const d = Math.hypot(node.x - point.x, node.z - point.z);
-      const limit = Math.max(maxDist, radius);
-      if (d > limit) continue;
-      const score = d - (node.kind === "ground_egg" ? 1.5 : 0);
-      if (score < bestD) {
-        bestD = score;
-        best = node;
-      }
+  /** Walk up the hit object to the node root that stores `userData.nodeId`. */
+  private resolveNodeId(obj: THREE.Object3D): string | null {
+    let cur: THREE.Object3D | null = obj;
+    while (cur) {
+      const id = cur.userData.nodeId;
+      if (typeof id === "string") return id;
+      cur = cur.parent;
     }
-    return best;
+    return null;
+  }
+
+  /**
+   * Pick the first node whose actual mesh the ray hits (no ground-radius halo).
+   * Closest intersection wins so overlapping props resolve correctly.
+   */
+  private pickNodeMesh(event: PointerEvent | MouseEvent): WorldNode | null {
+    this.setPointerFromEvent(event);
+    const targets: THREE.Object3D[] = [];
+    for (const [id, mesh] of this.nodeMeshes) {
+      if (!mesh.visible) continue;
+      const node = this.allNodes().find((n) => n.id === id);
+      if (!node || node.kind === "wild_pet") continue;
+      targets.push(mesh);
+    }
+    if (targets.length === 0) return null;
+    const hits = this.raycaster.intersectObjects(targets, true);
+    for (const hit of hits) {
+      // PointLights / non-Mesh helpers aren't raycast targets; still skip anything without a node id.
+      const id = this.resolveNodeId(hit.object);
+      if (!id) continue;
+      const node = this.allNodes().find((n) => n.id === id);
+      if (node) return node;
+    }
+    return null;
+  }
+
+  private pickPetMesh(event: PointerEvent | MouseEvent): boolean {
+    if (!this.petRoot.visible) return false;
+    this.setPointerFromEvent(event);
+    return this.raycaster.intersectObject(this.petRoot, true).length > 0;
   }
 
   private onPointer(event: PointerEvent) {
     if (event.button !== 0) return;
+    const node = this.pickNodeMesh(event);
+    if (node) {
+      // Walk to the object's footprint, not the screen-space click on a tall mesh.
+      this.moveTarget = new THREE.Vector3(node.x, GROUND_Y, node.z);
+      this.targetMarker.position.set(node.x, 0.05, node.z);
+      this.targetMarker.visible = true;
+      this.pendingInteract = node.id;
+      return;
+    }
     const point = this.pickGround(event);
     if (!point) return;
-    const node = this.nearestNode(point, 2.8);
     this.moveTarget = point;
     this.targetMarker.position.set(point.x, 0.05, point.z);
     this.targetMarker.visible = true;
-    this.pendingInteract = node?.id;
+    this.pendingInteract = undefined;
   }
 
   private onContextMenu(event: MouseEvent) {
     event.preventDefault();
-    const point = this.pickGround(event as unknown as PointerEvent);
-    if (!point) return;
-    const node = this.nearestNode(point, 2.8);
-    const hitPet = this.petRoot.visible && Math.hypot(point.x - this.petRoot.position.x, point.z - this.petRoot.position.z) < 1.4;
+    const node = this.pickNodeMesh(event);
+    const hitPet = this.pickPetMesh(event);
+    const point = this.pickGround(event) ?? (node ? new THREE.Vector3(node.x, GROUND_Y, node.z) : null);
+    if (!point && !node && !hitPet) return;
     this.onContext?.({
       clientX: event.clientX,
       clientY: event.clientY,
-      ground: { x: point.x, z: point.z },
+      ground: { x: point?.x ?? node?.x ?? 0, z: point?.z ?? node?.z ?? 0 },
       node,
       hitPet,
     });
   }
 
   private onPointerMove(event: PointerEvent) {
-    const point = this.pickGround(event);
-    if (!point) {
-      this.onHover?.(null);
-      return;
-    }
-    const node = this.nearestNode(point, 1.5);
-    const hitPet = this.petRoot.visible && Math.hypot(point.x - this.petRoot.position.x, point.z - this.petRoot.position.z) < 1.2;
-    if (hitPet && this.activePetSpecies) {
+    if (this.pickPetMesh(event) && this.activePetSpecies) {
       this.onHover?.(PET_SPECIES[this.activePetSpecies]?.name ?? "Pet");
       return;
     }
+    const node = this.pickNodeMesh(event);
     if (!node) {
       this.onHover?.(null);
       return;

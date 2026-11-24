@@ -3,14 +3,25 @@ import type { WorldNode } from "../content/world";
 import { ITEMS } from "../content/items";
 import { PET_SPECIES } from "../content/pets";
 import { randomDwarfDragonColor } from "../content/dragon-colors";
+import { GENERAL_SHOP } from "../content/shop";
 import type { GameState } from "./state";
 import type { World3D } from "./world3d";
 import type { GameSession } from "./session";
+
+/** Set by main to open the shop modal when interacting with Pip / the stall. */
+let openShopHandler: (() => void) | null = null;
+
+export function setOpenShopHandler(fn: (() => void) | null) {
+  openShopHandler = fn;
+}
 
 export function interact(node: WorldNode, state: GameState, world: World3D, session?: GameSession) {
   switch (node.kind) {
     case "npc":
       talkNpc(node, state);
+      break;
+    case "shop":
+      openShop(state);
       break;
     case "tree":
       chopTree(node, state, world, session);
@@ -26,6 +37,9 @@ export function interact(node: WorldNode, state: GameState, world: World3D, sess
       break;
     case "bench":
       craft(state);
+      break;
+    case "stove":
+      cookAtStove(state);
       break;
     case "enemy":
       if (session) session.startCombat(node);
@@ -43,8 +57,49 @@ export function interact(node: WorldNode, state: GameState, world: World3D, sess
   }
 }
 
+function openShop(state: GameState) {
+  state.log("Pip: Coin for common goods — browse the stall.");
+  openShopHandler?.();
+}
+
+/** Buy one unit from the general store. */
+export function buyFromShop(state: GameState, itemId: string): boolean {
+  const offer = GENERAL_SHOP.find((o) => o.itemId === itemId);
+  if (!offer) {
+    state.log("Pip doesn't sell that.");
+    return false;
+  }
+  if (state.save.gold < offer.price) {
+    state.log(`Need ${offer.price} coins (you have ${state.save.gold}).`);
+    return false;
+  }
+  if (!state.addItem(itemId, 1)) return false;
+  state.save.gold -= offer.price;
+  state.mark();
+  state.log(`Bought ${ITEMS[itemId]?.name ?? itemId} for ${offer.price} coins.`);
+  return true;
+}
+
+function cookAtStove(state: GameState) {
+  if (state.invQty("raw_fish") < 1) {
+    state.log("Put raw minnow on the cookstove (need Raw Fish).");
+    return;
+  }
+  if (!state.removeItem("raw_fish", 1)) return;
+  if (!state.addItem("cooked_minnow", 1)) {
+    state.addItem("raw_fish", 1);
+    return;
+  }
+  state.grantXp("crafting", 12);
+  state.log("You cook a Minnow on the stove.");
+}
+
 function talkNpc(node: WorldNode, state: GameState) {
   const npc = String(node.meta?.npc ?? "");
+  if (npc === "pip" || node.meta?.shop) {
+    openShop(state);
+    return;
+  }
   if (npc === "mabel") {
     const q = state.quest("q1_lamp_familiar");
     if (q.status === "available") {
@@ -97,8 +152,12 @@ function talkNpc(node: WorldNode, state: GameState) {
 }
 
 function chopTree(node: WorldNode, state: GameState, world: World3D, session?: GameSession) {
-  if (state.invQty("bronze_axe") < 1 && state.save.equipment.tool !== "bronze_axe") {
-    state.log("You need an axe.");
+  if (state.save.equipment.weapon !== "bronze_axe") {
+    state.log("Wear a Bronze Axe (Inventory → Wear / Worn → Weapon) to chop.");
+    return;
+  }
+  if (state.invQty("bronze_axe") < 1) {
+    state.log("You need a Bronze Axe in your inventory.");
     return;
   }
   const treeKind = String(node.meta?.tree ?? "tree");
@@ -153,8 +212,12 @@ export function castSpark(state: GameState) {
 }
 
 function mineRock(node: WorldNode, state: GameState, _world: World3D, session?: GameSession) {
+  if (state.save.equipment.weapon !== "bronze_pickaxe") {
+    state.log("Wear a Bronze Pickaxe (Inventory → Wear / Worn → Weapon) to mine.");
+    return;
+  }
   if (state.invQty("bronze_pickaxe") < 1) {
-    state.log("You need a pickaxe.");
+    state.log("You need a Bronze Pickaxe in your inventory.");
     return;
   }
   const ore = String(node.meta?.ore ?? "copper_ore");
@@ -173,8 +236,12 @@ function mineRock(node: WorldNode, state: GameState, _world: World3D, session?: 
 }
 
 function fish(node: WorldNode, state: GameState, _world: World3D, session?: GameSession) {
+  if (state.save.equipment.weapon !== "fishing_rod") {
+    state.log("Wear a Fishing Rod (Inventory → Wear / Worn → Weapon) to fish.");
+    return;
+  }
   if (state.invQty("fishing_rod") < 1) {
-    state.log("You need a fishing rod.");
+    state.log("You need a Fishing Rod in your inventory.");
     return;
   }
   const finish = () => {

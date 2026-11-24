@@ -1,6 +1,18 @@
 export type WorldNode = {
   id: string;
-  kind: "tree" | "rock" | "fish" | "forge" | "bench" | "npc" | "enemy" | "wild_pet" | "zone" | "ground_egg";
+  kind:
+    | "tree"
+    | "rock"
+    | "fish"
+    | "forge"
+    | "bench"
+    | "stove"
+    | "shop"
+    | "npc"
+    | "enemy"
+    | "wild_pet"
+    | "zone"
+    | "ground_egg";
   label: string;
   x: number;
   z: number;
@@ -15,14 +27,31 @@ export type WorldNode = {
  *   Combat (rats / shade)
  *   Fishing
  *   Trees (W) · spawn · Ores (E)
- *   NPCs · Furnace · Crafting bench (S)
+ *   NPCs · Shop · Furnace · Crafting · Stove (S)
  */
 export const WORLD_NODES: WorldNode[] = [
   // Stations + quest NPCs (south)
   { id: "npc_mabel", kind: "npc", label: "Mabel the Lampwright", x: -3, z: -4, meta: { npc: "mabel" } },
   { id: "npc_forge", kind: "npc", label: "Forge Master Holt", x: 1, z: -4, meta: { npc: "holt" } },
+  {
+    id: "shop_stall",
+    kind: "shop",
+    label: "General Store",
+    x: -1.2,
+    z: -5.8,
+    meta: { shop: "general" },
+  },
+  {
+    id: "npc_pip",
+    kind: "npc",
+    label: "Pip the Pedlar",
+    x: -0.4,
+    z: -5.1,
+    meta: { npc: "pip", shop: "general" },
+  },
   { id: "forge", kind: "forge", label: "Furnace", x: 4, z: -4 },
   { id: "bench", kind: "bench", label: "Crafting Station", x: 6.5, z: -3.5 },
+  { id: "stove", kind: "stove", label: "Cookstove", x: -5.5, z: -3.5 },
 
   // Woodcutting (west)
   { id: "tree_1", kind: "tree", label: "Tree", x: -7, z: 1, meta: { tree: "tree", log: "tree_logs", xp: 25 } },

@@ -154,10 +154,14 @@ export class GameState {
       xp: 0,
       traits: [...sp.traits],
       active: this.save.pets.length === 0,
+      following: this.save.pets.length === 0,
       color: opts?.color,
       colorName: opts?.colorName,
     };
-    if (pet.active) this.save.pets.forEach((p) => (p.active = false));
+    if (pet.active) this.save.pets.forEach((p) => {
+      p.active = false;
+      if (pet.following) p.following = false;
+    });
     this.save.pets.push(pet);
     if (!opts?.silent) this.log(`Pet unlocked: ${pet.name}!`);
     this.mark();
@@ -171,6 +175,36 @@ export class GameState {
   setActivePet(petId: string) {
     for (const p of this.save.pets) p.active = p.id === petId;
     this.mark();
+  }
+
+  /** Put pet out to follow (bags any other follower). */
+  setPetFollowing(petId: string) {
+    for (const p of this.save.pets) {
+      p.active = p.id === petId;
+      p.following = p.id === petId;
+    }
+    const pet = this.save.pets.find((p) => p.id === petId);
+    if (pet) this.log(`${pet.name} follows you.`);
+    this.mark();
+  }
+
+  /** Recall the out pet into the bag (or a specific pet). */
+  putPetInBag(petId?: string) {
+    const target = petId
+      ? this.save.pets.find((p) => p.id === petId)
+      : this.save.pets.find((p) => p.following);
+    if (!target) {
+      this.log("No pet is out.");
+      return;
+    }
+    target.following = false;
+    this.log(`${target.name} returns to your bag.`);
+    this.mark();
+  }
+
+  /** The pet currently following in the world, if any. */
+  followingPet() {
+    return this.save.pets.find((p) => p.following);
   }
 
   trainPet(amount: number) {

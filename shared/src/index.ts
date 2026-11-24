@@ -88,6 +88,32 @@ export const COMBAT_SPELLS: {
   },
 ];
 
+/** Full magic spellbook listing (skilling + combat). */
+export type MagicSpellKind = "skilling" | "combat";
+
+export const MAGIC_SPELLS: {
+  id: "spark" | CombatSpellId;
+  label: string;
+  level: number;
+  kind: MagicSpellKind;
+  desc: string;
+}[] = [
+  {
+    id: "spark",
+    label: "Spark",
+    level: 1,
+    kind: "skilling",
+    desc: "Burn a tree log → 1 ash, or oak log → 2 ashes. Magic XP.",
+  },
+  {
+    id: "water",
+    label: "Water",
+    level: 1,
+    kind: "combat",
+    desc: "Combat spell · wear Basic Staff + Water Essence.",
+  },
+];
+
 export type PetInstance = {
   id: string;
   speciesId: string;
@@ -96,6 +122,8 @@ export type PetInstance = {
   xp: number;
   traits: string[];
   active: boolean;
+  /** When true, pet is out and follows the player; false = in bag. */
+  following?: boolean;
   color?: number;
   colorName?: string;
   /** Light Orb (lamp_moth): ashes fed toward level 2 (need 1000). */
@@ -132,6 +160,22 @@ export type ResearchEntry = {
   note: string;
 };
 
+/** Worn equipment slots (RS-style). `weapon` is the held hand — sword, staff, axe, or pickaxe. */
+export type WearSlot = "hat" | "top" | "bottoms" | "shield" | "weapon" | "amulet";
+
+export const WEAR_SLOTS: WearSlot[] = ["hat", "top", "bottoms", "shield", "weapon", "amulet"];
+
+export const WEAR_SLOT_LABELS: Record<WearSlot, string> = {
+  hat: "Hat",
+  top: "Top",
+  bottoms: "Bottoms",
+  shield: "Shield",
+  weapon: "Weapon / Tool",
+  amulet: "Amulet",
+};
+
+export type EquipmentState = Partial<Record<WearSlot, string>>;
+
 export type CharacterSave = {
   skills: SkillsState;
   /** Fixed length INV_SIZE; use null for empty. */
@@ -139,10 +183,8 @@ export type CharacterSave = {
   pets: PetInstance[];
   quests: QuestProgress[];
   position: { x: number; y: number; z: number };
-  equipment: {
-    weapon?: string;
-    tool?: string;
-  };
+  /** Worn kit — weapon slot also holds tools (axe / pickaxe / staff / sword). */
+  equipment: EquipmentState;
   attackStyle: AttackStyle;
   /** When set, combat uses this spell instead of melee styles (needs staff + runes). */
   selectedSpell: CombatSpellId | null;
@@ -174,6 +216,10 @@ export function makeInstanceId(): string {
 export function defaultSave(): CharacterSave {
   const inv = emptyInventory();
   const starter: { itemId: string; qty: number }[] = [
+    { itemId: "linen_cap", qty: 1 },
+    { itemId: "work_smock", qty: 1 },
+    { itemId: "cord_trousers", qty: 1 },
+    { itemId: "brass_amulet", qty: 1 },
     { itemId: "bronze_axe", qty: 1 },
     { itemId: "bronze_pickaxe", qty: 1 },
     { itemId: "fishing_rod", qty: 1 },
@@ -191,6 +237,7 @@ export function defaultSave(): CharacterSave {
     xp: 0,
     traits: ["companion", "light"],
     active: true,
+    following: true,
     ashesFed: 0,
     oakFed: 0,
   };
@@ -205,8 +252,13 @@ export function defaultSave(): CharacterSave {
       { questId: "q4_amethyst_drake", status: "available", step: 0, flags: {} },
     ],
     position: { x: 0, y: 0, z: 0 },
-    // Unarmed fist by default — craft Bronze Sword from copper + tin.
-    equipment: { tool: "bronze_axe" },
+    // Starter clothes worn; weapon/tool empty until equipped from Inventory.
+    equipment: {
+      hat: "linen_cap",
+      top: "work_smock",
+      bottoms: "cord_trousers",
+      amulet: "brass_amulet",
+    },
     attackStyle: "accurate",
     selectedSpell: null,
     research: [],
@@ -214,7 +266,7 @@ export function defaultSave(): CharacterSave {
     maxHp: 10,
     gold: 25,
     unlockedZones: ["town", "outskirts"],
-    version: 6,
+    version: 7,
   };
 }
 
@@ -246,9 +298,11 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
   }
 
   let pets = (raw.pets || []).map((p) => {
-    if (p.speciesId !== LIGHT_ORB_SPECIES) return p;
+    const following = p.following ?? p.active;
+    if (p.speciesId !== LIGHT_ORB_SPECIES) return { ...p, following };
     return {
       ...p,
+      following,
       name: p.name?.includes("Lamp Moth") || p.name === "Lamp Moth" ? "Light Orb" : p.name || "Light Orb",
       ashesFed: p.ashesFed ?? 0,
       oakFed: p.oakFed ?? 0,
@@ -265,12 +319,19 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
         xp: 0,
         traits: ["companion", "light"],
         active: pets.length === 0,
+        following: true,
         ashesFed: 0,
         oakFed: 0,
       },
       ...pets,
     ];
     if (!pets.some((p) => p.active)) pets[0]!.active = true;
+  }
+  // At most one pet out
+  const out = pets.filter((p) => p.following);
+  if (out.length > 1) {
+    const keep = out.find((p) => p.active) ?? out[0]!;
+    for (const p of pets) p.following = p.id === keep.id;
   }
 
   return {
@@ -282,21 +343,30 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     selectedSpell:
       raw.selectedSpell === "water" ? "water" : raw.selectedSpell === null ? null : null,
     research: Array.isArray(raw.research) ? raw.research : [],
-    equipment: raw.equipment
-      ? {
-          ...raw.equipment,
-          // Treat explicit fist / empty as unarmed
-          weapon:
-            raw.equipment.weapon && raw.equipment.weapon !== "fist"
-              ? raw.equipment.weapon
-              : undefined,
-        }
-      : base.equipment,
+    equipment: normalizeEquipment(raw.equipment as EquipmentState & { tool?: string } | undefined, base.equipment),
     pets,
     quests: raw.quests?.length ? raw.quests : base.quests,
     unlockedZones: raw.unlockedZones?.length ? raw.unlockedZones : base.unlockedZones,
-    version: Math.max(6, raw.version ?? 1),
+    version: Math.max(7, raw.version ?? 1),
   };
+}
+
+/** Migrate legacy `{ tool }` into the shared weapon/tool hand slot. */
+function normalizeEquipment(
+  raw: (EquipmentState & { tool?: string }) | undefined,
+  fallback: EquipmentState
+): EquipmentState {
+  if (!raw) return { ...fallback };
+  const next: EquipmentState = {};
+  for (const slot of WEAR_SLOTS) {
+    const id = raw[slot];
+    if (id && id !== "fist") next[slot] = id;
+  }
+  // Old saves put the axe in `tool` — fold into weapon if hand empty.
+  if (!next.weapon && raw.tool && raw.tool !== "fist") {
+    next.weapon = raw.tool;
+  }
+  return next;
 }
 
 export function xpForLevel(level: number): number {
