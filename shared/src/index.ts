@@ -183,10 +183,21 @@ export function defaultSave(): CharacterSave {
   starter.forEach((s, i) => {
     inv[i] = { instanceId: makeInstanceId(), itemId: s.itemId, qty: s.qty };
   });
+  const lightOrb: PetInstance = {
+    id: `pet_${Math.random().toString(36).slice(2, 10)}`,
+    speciesId: LIGHT_ORB_SPECIES,
+    name: "Light Orb",
+    level: 1,
+    xp: 0,
+    traits: ["companion", "light"],
+    active: true,
+    ashesFed: 0,
+    oakFed: 0,
+  };
   return {
     skills: defaultSkills(),
     inventory: inv,
-    pets: [],
+    pets: [lightOrb],
     quests: [
       { questId: "q1_lamp_familiar", status: "available", step: 0, flags: {} },
       { questId: "q2_catcher_path", status: "available", step: 0, flags: {} },
@@ -203,7 +214,7 @@ export function defaultSave(): CharacterSave {
     maxHp: 10,
     gold: 25,
     unlockedZones: ["town", "outskirts"],
-    version: 5,
+    version: 6,
   };
 }
 
@@ -234,7 +245,7 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     slot++;
   }
 
-  const pets = (raw.pets || []).map((p) => {
+  let pets = (raw.pets || []).map((p) => {
     if (p.speciesId !== LIGHT_ORB_SPECIES) return p;
     return {
       ...p,
@@ -243,6 +254,24 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
       oakFed: p.oakFed ?? 0,
     };
   });
+  // Everyone has a Light Orb follower
+  if (!pets.some((p) => p.speciesId === LIGHT_ORB_SPECIES)) {
+    pets = [
+      {
+        id: `pet_${Math.random().toString(36).slice(2, 10)}`,
+        speciesId: LIGHT_ORB_SPECIES,
+        name: "Light Orb",
+        level: 1,
+        xp: 0,
+        traits: ["companion", "light"],
+        active: pets.length === 0,
+        ashesFed: 0,
+        oakFed: 0,
+      },
+      ...pets,
+    ];
+    if (!pets.some((p) => p.active)) pets[0]!.active = true;
+  }
 
   return {
     ...base,
@@ -266,7 +295,7 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     pets,
     quests: raw.quests?.length ? raw.quests : base.quests,
     unlockedZones: raw.unlockedZones?.length ? raw.unlockedZones : base.unlockedZones,
-    version: Math.max(5, raw.version ?? 1),
+    version: Math.max(6, raw.version ?? 1),
   };
 }
 

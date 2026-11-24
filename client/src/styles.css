@@ -765,3 +765,172 @@ button.linkish {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
+
+/* —— Pokémon-style battle screen —— */
+.battle-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  pointer-events: auto;
+}
+.battle-screen[hidden] {
+  display: none !important;
+}
+.battle-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(60, 90, 70, 0.55), transparent 70%),
+    linear-gradient(180deg, #1a2838 0%, #243448 40%, #3a4a3a 100%);
+}
+.battle-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 8vh 6vw 2vh;
+  min-height: 0;
+}
+.battle-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(42vw, 280px);
+}
+.battle-side.foe {
+  align-self: flex-start;
+  margin-top: 6vh;
+}
+.battle-stack {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.battle-fighter {
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.battle-fighter.player-block {
+  width: 56px;
+  height: 88px;
+  background: linear-gradient(180deg, #3a6a94, #2f5d8a 55%, #1e3a55);
+  border: 2px solid rgba(242, 232, 213, 0.25);
+  position: relative;
+}
+.battle-fighter.player-block::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 8px;
+  height: 22px;
+  background: #d4b896;
+  border-radius: 3px;
+}
+.battle-fighter.pet-orb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c8, #f6e27a 45%, #b8860b);
+  box-shadow: 0 0 16px rgba(246, 226, 122, 0.55);
+}
+.battle-fighter.enemy-rat {
+  width: 72px;
+  height: 52px;
+  background: linear-gradient(160deg, #6a6a72, #3e3e46);
+  border-radius: 40% 40% 30% 30%;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+}
+.battle-fighter.enemy-boss {
+  width: 80px;
+  height: 96px;
+  background: linear-gradient(180deg, #6a4cff, #2a1a55);
+  border-radius: 12px;
+  border: 2px solid rgba(180, 140, 255, 0.4);
+}
+.battle-hud-card {
+  width: 100%;
+  background: rgba(12, 16, 22, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.battle-name {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+}
+.battle-pet-label {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.hp-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.hp-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+.hp-fill.ally {
+  background: linear-gradient(90deg, #5a9e6a, #7ecf8a);
+}
+.hp-fill.foe {
+  background: linear-gradient(90deg, #c45c4a, #e07060);
+}
+.hp-text {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.battle-footer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  background: rgba(10, 14, 20, 0.92);
+  border-top: 1px solid var(--line);
+}
+.battle-feed {
+  font-size: 0.85rem;
+  max-height: 4.8rem;
+  overflow: auto;
+  color: var(--ink);
+}
+.battle-feed div {
+  padding: 2px 0;
+  color: #e8a090;
+}
+.battle-actions button {
+  min-width: 5.5rem;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  cursor: pointer;
+}
+.battle-actions button:hover {
+  border-color: var(--accent);
+}
+.battle-splat-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.splat.battle-splat {
+  position: absolute;
+}

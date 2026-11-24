@@ -48,6 +48,38 @@ app.innerHTML = `
   </div>
   <div id="game">
     <div id="viewport"></div>
+    <div id="battle-screen" class="battle-screen" hidden>
+      <div class="battle-backdrop"></div>
+      <div class="battle-stage">
+        <div class="battle-side ally">
+          <div class="battle-stack">
+            <div class="battle-fighter player-block" aria-hidden="true"></div>
+            <div class="battle-fighter pet-orb" id="battle-pet" aria-hidden="true"></div>
+          </div>
+          <div class="battle-hud-card">
+            <div class="battle-name" id="battle-player-name">You</div>
+            <div class="hp-track"><div class="hp-fill ally" id="battle-player-hp"></div></div>
+            <div class="hp-text" id="battle-player-hp-text">10/10</div>
+            <div class="battle-pet-label" id="battle-pet-name">Light Orb</div>
+          </div>
+        </div>
+        <div class="battle-side foe">
+          <div class="battle-fighter enemy-rat" id="battle-enemy-visual" aria-hidden="true"></div>
+          <div class="battle-hud-card">
+            <div class="battle-name" id="battle-enemy-name">Enemy</div>
+            <div class="hp-track"><div class="hp-fill foe" id="battle-enemy-hp"></div></div>
+            <div class="hp-text" id="battle-enemy-hp-text">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="battle-footer">
+        <div class="battle-feed" id="battle-feed" aria-live="polite"></div>
+        <div class="battle-actions">
+          <button type="button" id="battle-flee">Flee</button>
+        </div>
+      </div>
+      <div id="battle-splat-layer" class="battle-splat-layer"></div>
+    </div>
     <div class="hover-label" id="hover-label"></div>
     <div id="splat-layer"></div>
     <div id="ctx-menu" class="ctx-menu" hidden></div>
@@ -116,6 +148,8 @@ let skillInfoOpen: SkillId | null = null;
 let flashSkill: SkillId | null = null;
 let flashUntil = 0;
 let activeTab: SideTab = "inv";
+let battleOpen = false;
+let battleEnemyMaxHp = 1;
 
 function pushLog(msg: string) {
   const line = document.createElement("div");
@@ -124,6 +158,7 @@ function pushLog(msg: string) {
   infoFeed.appendChild(line);
   while (infoFeed.childElementCount > 80) infoFeed.firstChild?.remove();
   infoFeed.scrollTop = infoFeed.scrollHeight;
+  if (battleOpen && msg.startsWith("[Combat]")) pushBattleFeed(msg);
 }
 
 function appendChat(msg: api.ChatMessage) {
@@ -190,6 +225,10 @@ function spawnSplat(
   text: string,
   kind: "hit" | "miss" | "heal" | "hurt"
 ) {
+  if (battleOpen) {
+    spawnBattleSplat(text, kind);
+    return;
+  }
   if (!world) return;
   const scr = world.projectToScreen(worldPos.x, worldPos.y, worldPos.z);
   if (!scr) return;
@@ -201,6 +240,76 @@ function spawnSplat(
   splatLayer.appendChild(el);
   requestAnimationFrame(() => el.classList.add("go"));
   setTimeout(() => el.remove(), 1100);
+}
+
+function spawnBattleSplat(text: string, kind: "hit" | "miss" | "heal" | "hurt") {
+  const layer = document.getElementById("battle-splat-layer");
+  if (!layer) return;
+  const el = document.createElement("div");
+  el.className = `splat splat-${kind} battle-splat`;
+  el.textContent = text;
+  const foeSide = kind === "hurt" || kind === "heal";
+  el.style.left = foeSide ? `${18 + Math.random() * 12}%` : `${62 + Math.random() * 14}%`;
+  el.style.top = `${28 + Math.random() * 18}%`;
+  layer.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("go"));
+  setTimeout(() => el.remove(), 1100);
+}
+
+function pushBattleFeed(msg: string) {
+  const feed = document.getElementById("battle-feed");
+  if (!feed) return;
+  const line = document.createElement("div");
+  line.textContent = msg.replace(/^\[Combat\]\s*/, "");
+  feed.appendChild(line);
+  while (feed.childElementCount > 6) feed.firstChild?.remove();
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function openBattle(node: WorldNode) {
+  const screen = document.getElementById("battle-screen");
+  if (!screen || !state || !world) return;
+  battleOpen = true;
+  battleEnemyMaxHp = Math.max(1, world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5));
+  screen.hidden = false;
+  document.getElementById("battle-enemy-name")!.textContent = node.label;
+  const pet = state.activePet();
+  document.getElementById("battle-pet-name")!.textContent = pet?.name ?? "No pet";
+  document.getElementById("battle-feed")!.innerHTML = "";
+  const visual = document.getElementById("battle-enemy-visual")!;
+  visual.className = `battle-fighter ${node.meta?.boss ? "enemy-boss" : "enemy-rat"}`;
+  refreshBattleHud();
+  pushBattleFeed(`A wild ${node.label} appears!`);
+}
+
+function closeBattle() {
+  const screen = document.getElementById("battle-screen");
+  if (screen) screen.hidden = true;
+  battleOpen = false;
+  document.getElementById("battle-splat-layer")!.innerHTML = "";
+}
+
+function refreshBattleHud() {
+  if (!battleOpen || !state || !session || !world) return;
+  const id = session.combatTarget;
+  const node = id ? world.allNodes().find((n) => n.id === id) : null;
+  const playerHp = state.save.hp;
+  const playerMax = state.save.maxHp;
+  const pFill = document.getElementById("battle-player-hp") as HTMLElement;
+  const pText = document.getElementById("battle-player-hp-text")!;
+  pFill.style.width = `${Math.max(0, (100 * playerHp) / playerMax)}%`;
+  pText.textContent = `${playerHp}/${playerMax}`;
+
+  if (node) {
+    const eHp = world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
+    const eMax = Math.max(battleEnemyMaxHp, eHp, Number(node.meta?.hp ?? 5));
+    battleEnemyMaxHp = eMax;
+    const eFill = document.getElementById("battle-enemy-hp") as HTMLElement;
+    const eText = document.getElementById("battle-enemy-hp-text")!;
+    eFill.style.width = `${Math.max(0, (100 * Math.max(0, eHp)) / eMax)}%`;
+    eText.textContent = `${Math.max(0, eHp)}/${eMax}`;
+    document.getElementById("battle-enemy-name")!.textContent = node.label;
+  }
 }
 
 function openModal(title: string, bodyHtml: string) {
@@ -462,7 +571,7 @@ function renderTabContent() {
           </button>`;
       }).join("") +
       `</div>
-      <p class="muted" style="margin-top:12px;font-size:0.78rem">Fist 5t · Sword 4t · Staff 5t + Water · Rats 4t (weak, drop essence). Staff: 2 logs + scrap at crafting station.</p>`;
+      <p class="muted" style="margin-top:12px;font-size:0.78rem">Fist 5t · Sword 4t · Staff 5t + Water · Alley Rat 7t (weak, drop essence). Attack opens a battle screen.</p>`;
     tabPanel.querySelector("#btn-unequip")?.addEventListener("click", () => {
       session?.unequipWeapon();
       renderHud();
@@ -542,6 +651,7 @@ function renderHud() {
     combatEl.hidden = true;
     combatEl.textContent = "";
   }
+  refreshBattleHud();
   renderSkills();
   renderTabContent();
 }
@@ -616,6 +726,12 @@ async function enterWorld(u: AuthUser, save: CharacterSave) {
   session = new GameSession(state, world);
   session.onSplat = spawnSplat;
   session.onUi = () => renderHud();
+  session.onBattleOpen = (node) => openBattle(node);
+  session.onBattleClose = () => closeBattle();
+  document.getElementById("battle-flee")?.addEventListener("click", () => {
+    session?.stopCombat();
+    renderHud();
+  });
   session.onEnemyDefeated = (node) => {
     if (!state || !world) return;
     handleEnemyDefeated(node, state, world);

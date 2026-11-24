@@ -62,7 +62,7 @@ export const WORLD_NODES: WorldNode[] = [
     label: "Alley Rat",
     x: 2.5,
     z: 9,
-    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 4, maxHit: 1 },
+    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 7, maxHit: 1 },
   },
   {
     id: "rat_2",
@@ -70,7 +70,7 @@ export const WORLD_NODES: WorldNode[] = [
     label: "Alley Rat",
     x: 4.5,
     z: 10,
-    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 4, maxHit: 1 },
+    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 7, maxHit: 1 },
   },
   {
     id: "rat_3",
@@ -78,7 +78,7 @@ export const WORLD_NODES: WorldNode[] = [
     label: "Alley Rat",
     x: 1,
     z: 10.5,
-    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 4, maxHit: 1 },
+    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 7, maxHit: 1 },
   },
   {
     id: "shade",

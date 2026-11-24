@@ -23,6 +23,8 @@ export class GameSession {
   combatTarget: string | null = null;
   onSplat: SplatFn | null = null;
   onUi: (() => void) | null = null;
+  onBattleOpen: ((node: WorldNode) => void) | null = null;
+  onBattleClose: (() => void) | null = null;
 
   constructor(
     public state: GameState,
@@ -97,6 +99,7 @@ export class GameSession {
         `[Combat] Fighting ${node.label}! (${hp} hp) · you ${wpn.name} ${this.weaponTicks()}t · foe ${eTicks}t`
       );
     }
+    this.onBattleOpen?.(node);
     this.queuePlayerHit();
     this.queueEnemyHit();
     this.refresh();
@@ -122,9 +125,11 @@ export class GameSession {
 
   private clearCombat(reason?: string) {
     if (this.combatTarget && reason) this.state.log(`[Combat] ${reason}`);
+    const wasFighting = !!this.combatTarget;
     this.combatTarget = null;
     this.world.setCombatTarget(null);
     this.clearCombatSchedules();
+    if (wasFighting) this.onBattleClose?.();
   }
 
   private livingCombatTarget(): WorldNode | null {

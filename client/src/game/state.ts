@@ -143,7 +143,7 @@ export class GameState {
     const sp = PET_SPECIES[speciesId];
     if (!sp) return null;
     if (this.save.pets.some((p) => p.speciesId === speciesId)) {
-      this.log(`You already have ${sp.name}.`);
+      if (!opts?.silent) this.log(`You already have ${sp.name}.`);
       return null;
     }
     const pet: PetInstance = {
@@ -322,7 +322,11 @@ export class GameState {
     if (!def || q.status === "completed") return;
     q.status = "completed";
     q.step = def.steps.length;
-    if (def.rewardPet) this.unlockPet(def.rewardPet);
+    if (def.rewardPet) this.unlockPet(def.rewardPet, undefined, { silent: true });
+    if (def.rewardAshes && def.rewardAshes > 0) {
+      this.addItem("ashes", def.rewardAshes);
+      this.log(`+${def.rewardAshes} ashes`);
+    }
     if (def.rewardGold) {
       this.save.gold += def.rewardGold;
       this.log(`+${def.rewardGold} gold`);

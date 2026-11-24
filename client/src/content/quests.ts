@@ -7,6 +7,7 @@ export type QuestDef = {
   requiredPetTrait?: string;
   rewardPet?: string;
   rewardGold?: number;
+  rewardAshes?: number;
   unlockZone?: string;
 };
 
@@ -14,13 +15,14 @@ export const QUESTS: Record<string, QuestDef> = {
   q1_lamp_familiar: {
     id: "q1_lamp_familiar",
     name: "A Familiar Light",
-    summary: "Help the lampwright and earn your first familiar.",
+    summary: "Help the lampwright — she rewards 500 ashes for your Light Orb.",
     steps: [
-      "Speak to Mabel the Lampwright in the town square.",
+      "Speak to Mabel the Lampwright near spawn.",
       "Chop a tree for a tree log, then burn it with Magic (Spark) for ash.",
-      "Return to Mabel — claim your Light Orb.",
+      "Return to Mabel — claim 500 ashes for your Light Orb.",
     ],
     rewardPet: "lamp_moth",
+    rewardAshes: 500,
     rewardGold: 15,
   },
   q2_catcher_path: {

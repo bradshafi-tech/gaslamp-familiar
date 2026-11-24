@@ -56,7 +56,7 @@ function talkNpc(node: WorldNode, state: GameState) {
       if (q.step >= 2 || q.flags.burned) {
         if (!state.invQty("lamp_wick")) state.addItem("lamp_wick", 1);
         state.completeQuest("q1_lamp_familiar");
-        state.log("Mabel: A Light Orb for you — feed it ashes to grow.");
+        state.log("Mabel: Take these ashes — feed your Light Orb to grow it.");
       } else {
         state.log("Mabel: Chop a tree, then cast Spark to burn a log into ash.");
       }
