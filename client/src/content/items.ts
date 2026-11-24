@@ -39,16 +39,27 @@ export const ITEMS: Record<string, ItemDef> = {
     examine: "A simple rod. Higher Fishing shortens the wait between catches.",
     desc: "Catch river fish.",
   },
+  fist: {
+    id: "fist",
+    name: "Fist",
+    stackable: false,
+    category: "weapon",
+    attackTicks: 5,
+    attackBonus: 0,
+    strengthBonus: 0,
+    examine: "Unarmed. 5 ticks between hits — mine copper & tin, smelt a bar, craft a Bronze Sword (4 ticks).",
+    desc: "Default unarmed — 5-tick attack speed.",
+  },
   bronze_sword: {
     id: "bronze_sword",
     name: "Bronze Sword",
     stackable: false,
     category: "weapon",
     attackTicks: 4,
-    attackBonus: 2,
-    strengthBonus: 2,
-    examine: "A sturdy starter blade. Attack rate is fixed by the weapon, not your levels.",
-    desc: "Melee weapon — 4-tick attack speed.",
+    attackBonus: 3,
+    strengthBonus: 3,
+    examine: "Crafted from a bronze bar (copper + tin). 4-tick attacks, stronger than fists.",
+    desc: "Melee weapon — 4-tick attack, +3 accuracy/strength.",
   },
   tree_logs: {
     id: "tree_logs",
@@ -79,7 +90,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: "Copper Ore",
     stackable: true,
     category: "material",
-    examine: "Reddish ore. Smelt with tin at the forge.",
+    examine: "Reddish ore. Smelt with tin at the furnace.",
     desc: "Smelt with tin.",
   },
   tin_ore: {
@@ -87,7 +98,7 @@ export const ITEMS: Record<string, ItemDef> = {
     name: "Tin Ore",
     stackable: true,
     category: "material",
-    examine: "Pale ore. Pair with copper for bronze.",
+    examine: "Pale ore. Pair with copper for bronze at the furnace.",
     desc: "Smelt with copper.",
   },
   bronze_bar: {
@@ -95,8 +106,8 @@ export const ITEMS: Record<string, ItemDef> = {
     name: "Bronze Bar",
     stackable: true,
     category: "material",
-    examine: "A warm bronze ingot for crafting.",
-    desc: "Used for crafting.",
+    examine: "Smelted copper + tin. Craft a Bronze Sword (or lure) at the crafting station.",
+    desc: "Craft into a sword or lure.",
   },
   raw_fish: {
     id: "raw_fish",
@@ -167,5 +178,11 @@ export function itemExamine(id: string): string {
   return ITEMS[id]?.examine ?? "You see nothing special.";
 }
 
-/** Unarmed / default attack interval in ticks. */
+/** Unarmed / fist attack interval in ticks. */
 export const UNARMED_ATTACK_TICKS = 5;
+
+/** Resolve equipped melee weapon def — bare hands if none / fist. */
+export function equippedWeapon(weaponId: string | undefined) {
+  if (!weaponId || weaponId === "fist") return ITEMS.fist;
+  return ITEMS[weaponId] ?? ITEMS.fist;
+}

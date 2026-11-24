@@ -51,7 +51,7 @@ export const RESEARCH_DEFS: Record<string, ResearchDef> = {
     id: "animal_rat",
     name: "Alley Rat",
     category: "animal",
-    note: "Scruffy town vermin. Good for early combat practice.",
+    note: "Scruffy vermin — attacks every 4 ticks for weak damage. Good fist practice.",
   },
   boss_mist_shade: {
     id: "boss_mist_shade",
@@ -81,7 +81,19 @@ export const RESEARCH_DEFS: Record<string, ResearchDef> = {
     id: "bench",
     name: "Crafting Station",
     category: "misc",
-    note: "Turn a bronze bar into a crafted lure.",
+    note: "Craft a Bronze Sword from a bar (then lures for Holt).",
+  },
+  weapon_fist: {
+    id: "weapon_fist",
+    name: "Fist",
+    category: "misc",
+    note: "Unarmed default — 5 ticks between hits.",
+  },
+  weapon_bronze_sword: {
+    id: "weapon_bronze_sword",
+    name: "Bronze Sword",
+    category: "misc",
+    note: "Crafted melee — 4 ticks between hits, better damage.",
   },
 };
 

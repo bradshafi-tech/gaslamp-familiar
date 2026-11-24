@@ -258,16 +258,33 @@ function renderInvSlotMenu(index: number, clientX: number, clientY: number) {
   if (!state || !session) return;
   const slot = state.inventoryList()[index];
   if (!slot) return;
+  const def = ITEMS[slot.itemId];
   let useLabel = `Use ${itemName(slot.itemId)}`;
   if (slot.itemId === "ashes") useLabel = "Feed Light Orb (ashes)";
   else if (slot.itemId === "oak_logs") useLabel = "Feed / burn Oak Log";
   else if (slot.itemId === "tree_logs") useLabel = "Burn Tree Log → ash";
-  showCtx(clientX, clientY, [
-    { label: useLabel, action: () => session!.useItem(slot.itemId) },
+  else if (def?.category === "weapon") {
+    useLabel =
+      state.save.equipment.weapon === slot.itemId
+        ? `Unequip ${itemName(slot.itemId)}`
+        : `Equip ${itemName(slot.itemId)}`;
+  }
+  const items: { label: string; action: () => void }[] = [
+    {
+      label: useLabel,
+      action: () => {
+        if (def?.category === "weapon" && state!.save.equipment.weapon === slot.itemId) {
+          session!.unequipWeapon();
+        } else {
+          session!.useItem(slot.itemId);
+        }
+      },
+    },
     { label: "Examine", action: () => session!.examineItem(slot.itemId) },
     { label: "Research", action: () => session!.researchItem(slot.itemId) },
     { label: "Drop", action: () => session!.dropItemSlot(index) },
-  ]);
+  ];
+  showCtx(clientX, clientY, items);
 }
 
 function renderSkills() {
@@ -318,7 +335,12 @@ function renderTabContent() {
       el.addEventListener("click", () => {
         const slot = state!.inventoryList()[index];
         if (!slot || !session) return;
-        session.useItem(slot.itemId);
+        const def = ITEMS[slot.itemId];
+        if (def?.category === "weapon" && state!.save.equipment.weapon === slot.itemId) {
+          session.unequipWeapon();
+        } else {
+          session.useItem(slot.itemId);
+        }
         renderHud();
       });
       el.addEventListener("contextmenu", (ev) => {
@@ -406,8 +428,15 @@ function renderTabContent() {
   }
 
   if (activeTab === "styles") {
+    const wpnId = s.equipment.weapon;
+    const wpn = wpnId && ITEMS[wpnId] ? ITEMS[wpnId] : ITEMS.fist;
+    const ticks = wpn.attackTicks ?? 5;
     tabPanel.innerHTML =
-      `<h2>Attack Style</h2><div class="style-list">` +
+      `<h2>Attack Style</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:0.82rem">Weapon: <strong>${escapeHtml(wpn.name)}</strong> · ${ticks} ticks between hits${
+        wpnId ? ` · <button type="button" class="linkish" id="btn-unequip">Unequip</button>` : " (unarmed)"
+      }</p>
+      <div class="style-list">` +
       ATTACK_STYLES.map(
         (st) =>
           `<button type="button" class="style-pick ${s.attackStyle === st.id ? "active" : ""}" data-style="${st.id}">
@@ -415,7 +444,12 @@ function renderTabContent() {
             <span class="muted">${st.desc}</span>
           </button>`
       ).join("") +
-      `</div>`;
+      `</div>
+      <p class="muted" style="margin-top:12px;font-size:0.78rem">Fist 5t · Bronze Sword 4t · Alley Rat 4t (weak). Craft sword: mine → furnace → crafting station.</p>`;
+    tabPanel.querySelector("#btn-unequip")?.addEventListener("click", () => {
+      session?.unequipWeapon();
+      renderHud();
+    });
     tabPanel.querySelectorAll("[data-style]").forEach((el) => {
       el.addEventListener("click", () => {
         state!.setAttackStyle((el as HTMLElement).dataset.style as AttackStyle);
@@ -757,6 +791,3 @@ function interactNearest() {
     api.setToken(null);
   }
 })();
-
-// silence unused import guard for ITEMS in case tree-shake — keep for examine paths
-void ITEMS;

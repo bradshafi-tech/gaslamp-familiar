@@ -3,7 +3,7 @@ import {
   type AttackStyle,
   type SkillId,
 } from "@shared/index";
-import { ITEMS, UNARMED_ATTACK_TICKS, itemExamine } from "../content/items";
+import { ITEMS, UNARMED_ATTACK_TICKS, equippedWeapon, itemExamine } from "../content/items";
 import type { WorldNode } from "../content/world";
 import { researchDefForItem, researchDefForNode, researchIdForPetSpecies, RESEARCH_DEFS } from "../content/research";
 import { PET_SPECIES } from "../content/pets";
@@ -57,13 +57,14 @@ export class GameSession {
     });
   }
 
+  /** Player melee delay from equipped weapon (fist = 5, bronze sword = 4). */
   weaponTicks(): number {
-    const wid = this.state.save.equipment.weapon;
-    if (wid && ITEMS[wid]?.attackTicks) return ITEMS[wid].attackTicks!;
-    // Pet with combat trait slightly faster than unarmed
-    const pet = this.state.activePet();
-    if (pet?.traits.includes("combat")) return 4;
-    return UNARMED_ATTACK_TICKS;
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    return wpn.attackTicks ?? UNARMED_ATTACK_TICKS;
+  }
+
+  private enemyAttackTicks(node: WorldNode): number {
+    return Math.max(1, Number(node.meta?.attackTicks ?? 5));
   }
 
   startCombat(node: WorldNode) {
@@ -85,56 +86,77 @@ export class GameSession {
     const switching = !!this.combatTarget;
     this.combatTarget = node.id;
     this.world.setCombatTarget(node.id);
-    this.scheduler.cancelKind("combat");
+    this.clearCombatSchedules();
     const hp = this.world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    const eTicks = this.enemyAttackTicks(node);
     if (switching) {
       this.state.log(`[Combat] Switching target → ${node.label} (${hp} hp).`);
     } else {
-      this.state.log(`[Combat] Fighting ${node.label}! (${hp} hp)`);
+      this.state.log(
+        `[Combat] Fighting ${node.label}! (${hp} hp) · you ${wpn.name} ${this.weaponTicks()}t · foe ${eTicks}t`
+      );
     }
-    this.queueCombatHit();
+    this.queuePlayerHit();
+    this.queueEnemyHit();
     this.refresh();
   }
 
-  private queueCombatHit() {
+  private clearCombatSchedules() {
+    this.scheduler.cancelKind("combat_player");
+    this.scheduler.cancelKind("combat_enemy");
+    this.scheduler.cancelKind("combat"); // legacy
+  }
+
+  private queuePlayerHit() {
     if (!this.combatTarget) return;
-    const ticks = this.weaponTicks();
-    this.scheduler.after(ticks, "combat", () => this.resolveCombatHit());
+    this.scheduler.after(this.weaponTicks(), "combat_player", () => this.resolvePlayerHit());
+  }
+
+  private queueEnemyHit() {
+    if (!this.combatTarget) return;
+    const node = this.world.allNodes().find((n) => n.id === this.combatTarget);
+    if (!node) return;
+    this.scheduler.after(this.enemyAttackTicks(node), "combat_enemy", () => this.resolveEnemyHit());
   }
 
   private clearCombat(reason?: string) {
     if (this.combatTarget && reason) this.state.log(`[Combat] ${reason}`);
     this.combatTarget = null;
     this.world.setCombatTarget(null);
-    this.scheduler.cancelKind("combat");
+    this.clearCombatSchedules();
   }
 
-  private resolveCombatHit() {
+  private livingCombatTarget(): WorldNode | null {
     const id = this.combatTarget;
-    if (!id) return;
+    if (!id) return null;
     const node = this.world.allNodes().find((n) => n.id === id);
     if (!node || node.kind !== "enemy") {
       this.clearCombat("Combat ended.");
       this.refresh();
-      return;
+      return null;
     }
     const mesh = this.world.nodeMeshes.get(id);
     if (mesh && !mesh.visible) {
       this.clearCombat(`${node.label} is gone — combat ended.`);
       this.refresh();
-      return;
+      return null;
     }
+    return node;
+  }
+
+  private resolvePlayerHit() {
+    const node = this.livingCombatTarget();
+    if (!node) return;
+    const id = node.id;
 
     let hp = this.world.enemyHp.get(id) ?? Number(node.meta?.hp ?? 5);
     const style = this.state.save.attackStyle;
     const atk = this.state.save.skills.attack.level;
     const str = this.state.save.skills.strength.level;
-    const def = this.state.save.skills.defence.level;
-    const wpn = this.state.save.equipment.weapon
-      ? ITEMS[this.state.save.equipment.weapon]
-      : undefined;
-    const accBonus = (wpn?.attackBonus ?? 0) + (style === "accurate" ? 2 : 0);
-    const strBonus = (wpn?.strengthBonus ?? 0) + (style === "aggressive" ? 2 : 0);
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    const accBonus = (wpn.attackBonus ?? 0) + (style === "accurate" ? 2 : 0);
+    const strBonus = (wpn.strengthBonus ?? 0) + (style === "aggressive" ? 2 : 0);
     const accuracy = atk + accBonus + Math.random() * 8;
     const evade = Number(node.meta?.boss ? 8 : 4) + Math.random() * 6;
     const pos = this.world.nodeWorldPos(id) || { x: node.x, y: 1.2, z: node.z };
@@ -153,8 +175,30 @@ export class GameSession {
       this.state.trainPet(10);
     }
 
-    // Enemy retaliate same tick resolution
-    const rawHurt = Math.max(1, Math.floor(Math.random() * 2) + (node.meta?.boss ? 2 : 0));
+    if (hp <= 0) {
+      this.state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
+      if (node.meta?.xpMagic) this.state.grantXp("magic", Number(node.meta.xpMagic));
+      this.state.addItem("iron_scrap", 1);
+      this.world.hideEnemy(id);
+      setTimeout(() => this.world.showEnemy(id, Number(node.meta?.hp ?? 5)), 20000);
+      this.clearCombat(`${node.label} defeated! Combat ended.`);
+      this.onEnemyDefeated?.(node);
+      this.refresh();
+      return;
+    }
+
+    this.queuePlayerHit();
+    this.refresh();
+  }
+
+  private resolveEnemyHit() {
+    const node = this.livingCombatTarget();
+    if (!node) return;
+    const id = node.id;
+    const style = this.state.save.attackStyle;
+    const def = this.state.save.skills.defence.level;
+    const maxHit = Math.max(1, Number(node.meta?.maxHit ?? (node.meta?.boss ? 3 : 1)));
+    const rawHurt = 1 + Math.floor(Math.random() * maxHit);
     const mitigated = Math.max(0, rawHurt - Math.floor(def / 8) - (style === "defensive" ? 1 : 0));
     if (mitigated > 0) {
       const dead = this.state.takeDamage(mitigated);
@@ -170,21 +214,12 @@ export class GameSession {
         this.refresh();
         return;
       }
+    } else {
+      this.state.log(`[Combat] ${node.label} glances off you.`);
+      const ppos = { x: this.world.player.position.x, y: 1.4, z: this.world.player.position.z };
+      this.onSplat?.(ppos, "0", "miss");
     }
-
-    if (hp <= 0) {
-      this.state.grantXp("hitpoints", Number(node.meta?.xpHp ?? 10));
-      if (node.meta?.xpMagic) this.state.grantXp("magic", Number(node.meta.xpMagic));
-      this.state.addItem("iron_scrap", 1);
-      this.world.hideEnemy(id);
-      setTimeout(() => this.world.showEnemy(id, Number(node.meta?.hp ?? 5)), 20000);
-      this.clearCombat(`${node.label} defeated! Combat ended.`);
-      this.onEnemyDefeated?.(node);
-      this.refresh();
-      return;
-    }
-
-    this.queueCombatHit();
+    this.queueEnemyHit();
     this.refresh();
   }
 
@@ -218,7 +253,20 @@ export class GameSession {
     const node = this.world.allNodes().find((n) => n.id === this.combatTarget);
     if (!node) return null;
     const hp = this.world.enemyHp.get(node.id) ?? Number(node.meta?.hp ?? 5);
-    return `Fighting ${node.label} · ${Math.max(0, hp)} hp`;
+    const wpn = equippedWeapon(this.state.save.equipment.weapon);
+    return `Fighting ${node.label} · ${Math.max(0, hp)} hp · ${wpn.name} ${this.weaponTicks()}t`;
+  }
+
+  unequipWeapon() {
+    if (!this.state.save.equipment.weapon) {
+      this.state.log("Already unarmed (Fist, 5 ticks).");
+      return;
+    }
+    const name = ITEMS[this.state.save.equipment.weapon]?.name ?? "weapon";
+    delete this.state.save.equipment.weapon;
+    this.state.log(`Unequipped ${name}. Fighting with Fist (5 ticks).`);
+    this.state.mark();
+    this.refresh();
   }
 
   researchNode(node: WorldNode) {
@@ -308,9 +356,10 @@ export class GameSession {
       this.refresh();
       return;
     }
-    if (def.category === "weapon") {
+    if (def.category === "weapon" && itemId !== "fist") {
       this.state.save.equipment.weapon = itemId;
-      this.state.log(`Equipped ${def.name}.`);
+      const ticks = def.attackTicks ?? UNARMED_ATTACK_TICKS;
+      this.state.log(`Equipped ${def.name} (${ticks}-tick attacks).`);
       this.state.mark();
       this.refresh();
       return;

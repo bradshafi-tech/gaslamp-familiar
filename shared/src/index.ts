@@ -156,7 +156,6 @@ export function defaultSave(): CharacterSave {
     { itemId: "bronze_axe", qty: 1 },
     { itemId: "bronze_pickaxe", qty: 1 },
     { itemId: "fishing_rod", qty: 1 },
-    { itemId: "bronze_sword", qty: 1 },
     { itemId: "bread", qty: 5 },
     { itemId: "catch_net", qty: 3 },
   ];
@@ -174,14 +173,15 @@ export function defaultSave(): CharacterSave {
       { questId: "q4_amethyst_drake", status: "available", step: 0, flags: {} },
     ],
     position: { x: 0, y: 0, z: 0 },
-    equipment: { weapon: "bronze_sword", tool: "bronze_axe" },
+    // Unarmed fist by default — craft Bronze Sword from copper + tin.
+    equipment: { tool: "bronze_axe" },
     attackStyle: "accurate",
     research: [],
     hp: 10,
     maxHp: 10,
     gold: 25,
     unlockedZones: ["town", "outskirts"],
-    version: 3,
+    version: 4,
   };
 }
 
@@ -229,11 +229,20 @@ export function normalizeSave(raw: CharacterSave): CharacterSave {
     inventory,
     attackStyle: raw.attackStyle || "accurate",
     research: Array.isArray(raw.research) ? raw.research : [],
-    equipment: raw.equipment || base.equipment,
+    equipment: raw.equipment
+      ? {
+          ...raw.equipment,
+          // Treat explicit fist / empty as unarmed
+          weapon:
+            raw.equipment.weapon && raw.equipment.weapon !== "fist"
+              ? raw.equipment.weapon
+              : undefined,
+        }
+      : base.equipment,
     pets,
     quests: raw.quests?.length ? raw.quests : base.quests,
     unlockedZones: raw.unlockedZones?.length ? raw.unlockedZones : base.unlockedZones,
-    version: 3,
+    version: Math.max(4, raw.version ?? 1),
   };
 }
 

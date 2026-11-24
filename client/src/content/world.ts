@@ -55,17 +55,38 @@ export const WORLD_NODES: WorldNode[] = [
   { id: "rock_cu2", kind: "rock", label: "Copper Vein", x: 8, z: 5, meta: { ore: "copper_ore", xp: 22 } },
   { id: "rock_sn2", kind: "rock", label: "Tin Vein", x: 6.5, z: 4.5, meta: { ore: "tin_ore", xp: 22 } },
 
-  // Combat (far north)
-  { id: "rat_1", kind: "enemy", label: "Alley Rat", x: 2.5, z: 9, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
-  { id: "rat_2", kind: "enemy", label: "Alley Rat", x: 4.5, z: 10, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
-  { id: "rat_3", kind: "enemy", label: "Alley Rat", x: 1, z: 10.5, meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10 } },
+  // Combat (far north) — attackTicks = delay between enemy hits
+  {
+    id: "rat_1",
+    kind: "enemy",
+    label: "Alley Rat",
+    x: 2.5,
+    z: 9,
+    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 4, maxHit: 1 },
+  },
+  {
+    id: "rat_2",
+    kind: "enemy",
+    label: "Alley Rat",
+    x: 4.5,
+    z: 10,
+    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 4, maxHit: 1 },
+  },
+  {
+    id: "rat_3",
+    kind: "enemy",
+    label: "Alley Rat",
+    x: 1,
+    z: 10.5,
+    meta: { hp: 6, xpAttack: 12, xpStr: 8, xpHp: 10, attackTicks: 4, maxHit: 1 },
+  },
   {
     id: "shade",
     kind: "enemy",
     label: "Mist Shade",
     x: 3,
     z: 13,
-    meta: { hp: 18, xpAttack: 30, xpStr: 20, xpHp: 24, xpMagic: 15, boss: true },
+    meta: { hp: 18, xpAttack: 30, xpStr: 20, xpHp: 24, xpMagic: 15, boss: true, attackTicks: 5, maxHit: 3 },
   },
 ];
 
